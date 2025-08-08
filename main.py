@@ -5,6 +5,7 @@ import re
 import sys
 import time
 from datetime import date, datetime
+from http.cookies import SimpleCookie
 from io import BytesIO
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from openpyxl.drawing.image import Image as XLImage
 
 import util
 
+DEBUG = False
+
 # 设置 Playwright 浏览器路径（相对路径）
 if not util.is_debug():
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(Path(__file__).parent / "ms-playwright")
@@ -32,6 +35,8 @@ console = Console()
 def check_load_finished(delay=3.0):
     last_time = time.time()
     while True:
+        if DEBUG:
+            print_inline("pyautogui.pixel: " + str(pyautogui.pixel(992, 594)), color="yellow")
         if (10, 90, 160) == pyautogui.pixel(992, 594):
             last_time = time.time()
         if time.time() - last_time >= delay:
@@ -91,7 +96,10 @@ try:
     config, ok = util.load_config()
     if not ok:
         print_inline("配置文件读取失败！" + config, color="red")
+        input("按任意键退出...")
         sys.exit()
+
+    DEBUG = config["debug"]
 
     if config['currentPage'] <= 0:
         ################## 启动应用程序 ##################
@@ -191,6 +199,53 @@ try:
           get: () => false,
         });
         """)
+
+        # 创建 API 请求上下文
+        # resp = requests.post(
+        #     "https://www.amazon.co.jp/portal-migration/hz/glow/address-change?actionSource=glow",
+        #     json={"locationType": "LOCATION_INPUT","zipCode": "169-0074","deviceType": "web","storeContext": "hpc","pageType": "Detail","actionSource": "glow"},
+        #     headers={
+        #         "Content-Type": "application/json",
+        #         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        #     }
+        # )
+        # cookies_raw = resp.headers.get("set-cookie")
+        # print(cookies_raw)
+        # cookie_obj = SimpleCookie()
+        # cookie_obj.load(cookies_raw)
+        # cookies_for_playwright = []
+        # for key, morsel in cookie_obj.items():
+        #     cookies_for_playwright.append({
+        #         "name": key,
+        #         "value": morsel.value,
+        #         "domain": "httpbin.org",
+        #         "path": morsel["path"] if morsel["path"] else "/",
+        #         "httpOnly": False,
+        #         "secure": False
+        #     })
+        # context.add_cookies(cookies_for_playwright)
+
+        context.add_cookies([{
+            "name": "ubid-acbjp",
+            "value": "355-5685452-2837352",
+            "domain": ".amazon.co.jp",
+            "path": "/",
+        }, {
+            "name": "session-id",
+            "value": "357-7564356-4927846",
+            "domain": ".amazon.co.jp",
+            "path": "/",
+        }])
+
+        # 无图模式
+        context.route("**/*", lambda route, request:
+            route.abort() if request.resource_type == "image" else route.continue_()
+        )
+
+        # 拦截所有 CSS 请求
+        context.route("**/*", lambda route, request:
+            route.abort() if request.resource_type == "stylesheet" else route.continue_()
+        )
 
         for cur_page in range(0 if config['currentPage'] <= 0 else (config['currentPage'] - 1), total_page):
             # 第一页按钮坐标

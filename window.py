@@ -9,6 +9,8 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
 
 import util
 from ui_main_window import Ui_mainWindow
+from util import is_debug
+
 
 class AsyncWorker(QThread):
     # 定义信号，用于将异步任务的结果传递回主线程
@@ -49,6 +51,7 @@ class MyApp(QMainWindow):
             self.ui.sbConcurrency.setValue(config["concurrency"])
             self.ui.cbShowBrowser.setChecked(config["showBrowser"])
             self.ui.leExcelPath.setText(config["excelPath"])
+            self.ui.cbDebug.setChecked(config["debug"])
 
         self.ui.pbExePath.clicked.connect(self.pb_exe_path)
         self.ui.pbStart.clicked.connect(self.pb_start)
@@ -96,6 +99,7 @@ class MyApp(QMainWindow):
         current_page = int(self.ui.sbCurrentPage.value()) # 该字段只存储，不读取
         show_browser = self.ui.cbShowBrowser.isChecked()
         excel_path = self.ui.leExcelPath.text()
+        debug = self.ui.cbDebug.isChecked()
 
         if not exe_path or not user or not pwd:
             QMessageBox.warning(self, "提示", "请先配置 智赢软件 的相关信息！")
@@ -112,7 +116,8 @@ class MyApp(QMainWindow):
             "concurrency": concurrency,
             "currentPage": current_page,
             "showBrowser": show_browser,
-            "excelPath": excel_path
+            "excelPath": excel_path,
+            "debug": debug
         })
 
         util.save_config(config_data)

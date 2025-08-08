@@ -278,7 +278,7 @@
       </rect>
      </property>
      <property name="text">
-      <string>并发数量</string>
+      <string>并发数量(暂未实现)</string>
      </property>
     </widget>
     <widget class="QSpinBox" name="sbConcurrency">
@@ -370,6 +370,19 @@
      </property>
      <property name="text">
       <string>选择</string>
+     </property>
+    </widget>
+    <widget class="QCheckBox" name="cbDebug">
+     <property name="geometry">
+      <rect>
+       <x>560</x>
+       <y>50</y>
+       <width>111</width>
+       <height>21</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>开启调试模式</string>
      </property>
     </widget>
    </widget>
