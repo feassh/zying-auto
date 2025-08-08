@@ -88,3 +88,4 @@ coverage.xml
 .env.*
 
 excel/
+config.json

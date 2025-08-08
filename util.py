@@ -43,6 +43,10 @@ def get_version():
         return ""
 
 
+def is_debug():
+    return os.environ.get("DEBUG") == "1"
+
+
 def is_admin():
     if platform.system() == "Windows":
         # Windows: 使用 ctypes 检查是否为管理员
@@ -62,3 +66,19 @@ def get_update_info():
         return resp.json(), True
     except Exception as e:
         return e, False
+
+
+def check_need_update():
+    current_version = get_version()
+
+    info, ok = get_update_info()
+    if not ok:
+        return info, False
+
+    latest_version = info.get("version")
+    desc = info.get("desc")
+
+    if latest_version == current_version:
+        return "", False
+
+    return desc, True

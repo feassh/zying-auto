@@ -5,10 +5,12 @@ import re
 import sys
 import time
 from datetime import date, datetime
+from io import BytesIO
 from pathlib import Path
 
 import pyautogui
 import pyperclip
+import requests
 from pywinauto.application import Application
 from rich.console import Console
 from typing import Literal
@@ -16,11 +18,13 @@ from playwright.sync_api import sync_playwright
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+from openpyxl.drawing.image import Image as XLImage
 
 import util
 
 # 设置 Playwright 浏览器路径（相对路径）
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(Path(__file__).parent / "ms-playwright")
+if not util.is_debug():
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(Path(__file__).parent / "ms-playwright")
 
 console = Console()
 
@@ -224,6 +228,7 @@ try:
                 try:
                     page.goto("https://www.amazon.co.jp/s?k=" + kw.strip(), timeout=60000, wait_until='load')
                 except Exception as e:
+                    print_inline(str(e), color="red")
                     print_inline("网络超时，自动筛选下一个搜索词...（若频繁超时，请检查本地网络与VPN）", color="red")
                     page.close()
                     time.sleep(config["fetchDelay"])
@@ -238,6 +243,7 @@ try:
 
                     els = page.query_selector_all("div.udm-primary-delivery-message span.a-text-bold")
                 except Exception as e:
+                    print_inline("抓取该搜索词配送日期时发生错误：" + str(e), color="red")
                     els = []
 
                 count = 0
@@ -265,7 +271,38 @@ try:
 
                 if count >= config['matchCount']:
                     print_inline("该搜索词符合预期条件，已记录到数据库", color="green") # , newline=False
-                    saved_kw.append(kw.strip())
+
+                    img = ''
+                    if len(els) > 0:
+                        print_inline("正在获取该搜索词对应商品的图片...", color="yellow")
+
+                        # 向上遍历直到找到 data-cel-widget 包含 "MAIN-SEARCH_RESULTS-" 的 div
+                        result = els[0].evaluate(
+                            """
+                            node => {
+                                let current = node;
+                                while (current && current !== document) {
+                                    if (current.tagName === 'DIV' && 
+                                        current.dataset.celWidget && 
+                                        current.dataset.celWidget.includes('MAIN-SEARCH_RESULTS-')) {
+                                        // 在父元素内查找 img.s-image
+                                        const img = current.querySelector('img.s-image');
+                                        return img ? img.src : null;
+                                    }
+                                    current = current.parentElement;
+                                }
+                                return null; // 未找到匹配的父元素
+                            }
+                            """
+                        )
+
+                        if result is not None and len(result) > 0:
+                            img = result
+                            print_inline("图片获取成功：" + result, color="green")
+                        else:
+                            print_inline("图片获取失败，自动跳过", color="red")
+
+                    saved_kw.append((kw.strip(), img))
                 else:
                     print_inline("该搜索词不符合预期条件，已忽略", color="red") # , newline=False
                 page.close()
@@ -275,33 +312,59 @@ try:
             if len(saved_kw) <= 0:
                 print_inline("当前页筛选后的搜索词数量为 0，跳过保存为 Excel 的步骤", color="yellow")
                 continue
+            else:
+                print_inline(f"当前页筛选后的搜索词数量为 {len(saved_kw)} 个，正在生成 Excel 文件...", color="yellow")
 
-            # 创建工作簿和工作表
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "亚马逊搜索词"
+            try:
+                # 创建工作簿和工作表
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "亚马逊搜索词"
 
-            # 设置标题
-            title = "亚马逊 [日本]区域 搜索词"
-            ws['A1'] = title
-            ws['A1'].font = Font(bold=True)  # 加粗标题
+                # 设置标题
+                title = "亚马逊 [日本]区域 搜索词"
+                ws['A1'] = title
+                ws['A1'].font = Font(bold=True)
 
-            # 写入数据和超链接
-            for i, text in enumerate(saved_kw, start=2):  # 从第2行开始写
-                cell = ws.cell(row=i, column=1, value=text)
-                cell.hyperlink = "https://www.amazon.co.jp/s?k=" + text
-                cell.style = "Hyperlink"  # 使用超链接样式，默认蓝色带下划线
+                # 列标题（第二行）
+                ws.cell(row=2, column=1, value="搜索词").font = Font(bold=True)
+                ws.cell(row=2, column=2, value="图片").font = Font(bold=True)
 
-            # 自动调整列宽（简单版）
-            max_len = max(len(text) for text in saved_kw)
-            ws.column_dimensions[get_column_letter(1)].width = max_len + 5
+                # 写入数据和超链接 & 图片
+                for i, (text, img_url) in enumerate(saved_kw, start=3):  # 从第3行开始写
+                    # 第一列：搜索词 + 超链接
+                    cell = ws.cell(row=i, column=1, value=text)
+                    cell.hyperlink = "https://www.amazon.co.jp/s?k=" + text
+                    cell.style = "Hyperlink"
 
-            # 保存文件，文件名使用当前日期
-            filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%s") + f"-第{cur_page + 1}页" + ".xlsx"
-            output_dir = Path(os.path.join(util.get_exe_dir(), "excel"))
-            output_dir.mkdir(parents=True, exist_ok=True)
-            wb.save(output_dir / filename)
-            print_inline(f"当前页筛选后的搜索词数量为 {len(saved_kw)} 个，已将数据存储为 Excel 文件：{filename}", color="green")
+                    # 第二列：下载图片并插入
+                    try:
+                        resp = requests.get(img_url, timeout=10)
+                        if resp.status_code == 200:
+                            img_data = BytesIO(resp.content)
+                            img = XLImage(img_data)
+                            img.width, img.height = 80, 80  # 缩放图片大小
+                            img_cell = f"B{i}"
+                            ws.add_image(img, img_cell)
+                            ws.row_dimensions[i].height = 65  # 调整行高
+                    except Exception as e:
+                        print_inline(f"搜索词 {text} 的图片下载失败，已忽略: {img_url}\n{e}", color="red")
+
+                # 自动调整第一列列宽
+                max_len = max(len(text) for (text, _) in saved_kw)
+                ws.column_dimensions[get_column_letter(1)].width = max_len + 5
+                ws.column_dimensions[get_column_letter(2)].width = 15  # 第二列图片列
+
+                # 保存文件，文件名使用当前日期
+                filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + f"-第{cur_page + 1}页" + ".xlsx"
+                output_dir = Path(
+                    config['excelPath'] if config['excelPath'] != "" else os.path.join(util.get_exe_dir(), "excel"))
+                output_dir.mkdir(parents=True, exist_ok=True)
+                wb.save(output_dir / filename)
+                print_inline(f"已将数据存储为 Excel 文件：{filename}", color="green")
+            except Exception as e:
+                print_inline(str(e), color="red")
+                print_inline("Excel 生成失败！", color="red")
 
         browser.close()
         print_inline("程序执行完毕！", color="green")
