@@ -162,3 +162,26 @@ def get_next_page_point(rect):
     center_y = n_y + n_h // 2
 
     return rect.left + center_x, rect.top + center_y
+
+
+def save_kw_to_server(kws):
+    if kws is None or len(kws) == 0:
+        return True
+
+    try:
+        data = []
+        for kw, img in kws:
+            data.append({
+                "kw": kw,
+                "img": img
+            })
+
+        resp = requests.post("https://zying.feassh.workers.dev/insertBatch", json={
+            "data": data,
+            "token": "feassh-zying-cf-worker-token"
+        }, timeout=20)
+        resp.raise_for_status()
+
+        return resp.json()["code"] == 0
+    except Exception:
+        return False

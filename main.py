@@ -399,6 +399,12 @@ try:
             print_inline(str(e), color="red")
             print_inline("Excel 生成失败！", color="red")
 
+        # 数据上传到服务器
+        if util.save_kw_to_server(saved_kw):
+            print_inline("** 数据已同步上传到服务器端 **", color="green")
+        else:
+            print_inline("** 数据上传服务器失败，可能是 VPN 代理的问题。（不影响流程，可忽略） **", color="yellow")
+
     print_inline("程序执行完毕！", color="green")
     input("按任意键退出...")
 except Exception as e:

@@ -4,7 +4,8 @@ import os
 import subprocess
 import sys
 
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal
+from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QUrl
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
 
 import util
@@ -56,6 +57,7 @@ class MyApp(QMainWindow):
         self.ui.pbExePath.clicked.connect(self.pb_exe_path)
         self.ui.pbStart.clicked.connect(self.pb_start)
         self.ui.pbExcelPath.clicked.connect(self.pb_excel_path)
+        self.ui.pbOpenWebsite.clicked.connect(self.pb_open_website)
 
         if not util.is_admin():
             QMessageBox.critical(self, "提示", "请使用管理员方式运行本软件")
@@ -128,6 +130,9 @@ class MyApp(QMainWindow):
         directory_path = QFileDialog.getExistingDirectory(self, "选择文件夹")
         if directory_path:
             self.ui.leExcelPath.setText(directory_path)
+
+    def pb_open_website(self):
+        QDesktopServices.openUrl(QUrl("https://zying.woc.cool"))
 
     def update_app(self, result: tuple):
         desc, ok = result
