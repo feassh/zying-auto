@@ -146,6 +146,9 @@ def upgrade():
 
     print("发现新版本，准备下载更新...")
 
+    # 先强行结束 ZYing.exe，不然可能会提示文件被占用，导致更新失败
+    util.kill_process_by_name("ZYing.exe")
+
     if not download_file_with_progress(update_url, UPDATE_ZIP_NAME):
         return
 

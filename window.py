@@ -35,23 +35,23 @@ class MyApp(QMainWindow):
         self.ui.setupUi(self)
 
         self.window().setWindowTitle(self.window().windowTitle() + " - " + util.get_version())
+        self.window().setFixedSize(self.window().size().width(), self.window().size().height())
 
         self.process = None
         self.running = False
 
         config, ok = util.load_config()
         if ok:
-            self.ui.leExePath.setText(config["exePath"])
-            self.ui.leUser.setText(config["user"])
-            self.ui.lePwd.setText(config["pwd"])
-            self.ui.sbMinDateInterval.setValue(config["minDateInterval"])
-            self.ui.sbMaxDateInterval.setValue(config["maxDateInterval"])
-            self.ui.sbMatchCount.setValue(config["matchCount"])
-            self.ui.sbFetchDelay.setValue(config["fetchDelay"])
-            self.ui.sbConcurrency.setValue(config["concurrency"])
-            self.ui.cbShowBrowser.setChecked(config["showBrowser"])
-            self.ui.leExcelPath.setText(config["excelPath"])
-            self.ui.cbDebug.setChecked(config["debug"])
+            self.ui.leExePath.setText(config.get("exePath", ""))
+            self.ui.leUser.setText(config.get("user", ""))
+            self.ui.lePwd.setText(config.get("pwd", ""))
+            self.ui.sbMinDateInterval.setValue(config.get("minDateInterval", 0))
+            self.ui.sbMaxDateInterval.setValue(config.get("maxDateInterval", 0))
+            self.ui.sbMatchCount.setValue(config.get("matchCount", 0))
+            self.ui.sbFetchDelay.setValue(config.get("fetchDelay", 0))
+            self.ui.sbConcurrency.setValue(config.get("concurrency", 0))
+            self.ui.leExcelPath.setText(config.get("excelPath", ""))
+            self.ui.cbDebug.setChecked(config.get("debug", False))
 
         self.ui.pbExePath.clicked.connect(self.pb_exe_path)
         self.ui.pbStart.clicked.connect(self.pb_start)
@@ -97,7 +97,6 @@ class MyApp(QMainWindow):
         fetch_delay = int(self.ui.sbFetchDelay.value())
         concurrency = int(self.ui.sbConcurrency.value())
         current_page = int(self.ui.sbCurrentPage.value()) # 该字段只存储，不读取
-        show_browser = self.ui.cbShowBrowser.isChecked()
         excel_path = self.ui.leExcelPath.text()
         debug = self.ui.cbDebug.isChecked()
 
@@ -115,7 +114,6 @@ class MyApp(QMainWindow):
             "fetchDelay": fetch_delay,
             "concurrency": concurrency,
             "currentPage": current_page,
-            "showBrowser": show_browser,
             "excelPath": excel_path,
             "debug": debug
         })
