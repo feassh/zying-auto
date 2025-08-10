@@ -25,10 +25,6 @@ import util
 
 DEBUG = False
 
-# 设置 Playwright 浏览器路径（相对路径）
-if not util.is_debug():
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(Path(__file__).parent / "ms-playwright")
-
 console = Console()
 
 
@@ -81,7 +77,7 @@ def safe_right_click(x, y, duration=0.05):
         time.sleep(0.05)
 
 
-try:
+def main():
     # 获取自身控制台窗口句柄
     hwnd = ctypes.windll.kernel32.GetConsoleWindow()
     if hwnd:
@@ -95,7 +91,7 @@ try:
     config, ok = util.load_config()
     if not ok:
         print_inline("配置文件读取失败！" + config, color="red")
-        input("按任意键退出...")
+        util.press_any_key_exit()
         sys.exit()
 
     DEBUG = config["debug"]
@@ -176,7 +172,7 @@ try:
         total_page = math.ceil(total_item / 60)
     if total_item <= 0:
         print_inline("搜索词分页数据获取失败！程序已终止运行。", color="red")
-        input("按任意键退出...")
+        util.press_any_key_exit()
         sys.exit()
     else:
         print_inline(f"共获取到 {total_item} 条搜索词数据，一共 {total_page} 页", color="green")
@@ -232,7 +228,7 @@ try:
             safe_click(x=155, y=600)
         else:
             while True:
-                point = util.get_next_page_point(page_rect)
+                point = util.get_next_page_point(page_rect, debug=DEBUG)
                 if point is not None:
                     x, y = point
                     safe_click(x=x, y=y)
@@ -258,7 +254,7 @@ try:
 
             try:
                 response = requests.get(
-                    "https://www.amazon.co.jp/s?k=" + kw.strip(),
+                    "https://www.amazon.co.jp/s?k=" + kw.strip() + "&language=zh_CN",
                     timeout=60,
                     headers={
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0",
@@ -317,26 +313,87 @@ try:
                     # print_inline("未匹配到日期", color="red")
 
             if count >= config['matchCount']:
-                print_inline("该搜索词符合预期条件，已记录到数据库", color="green")  # , newline=False
+                print_inline("该搜索词符合预期条件，已记录", color="green")  # , newline=False
 
-                img = ''
+                img = None
+                price_symbol = None
+                price = None
+                buy_number = None
                 if len(els) > 0:
-                    print_inline("正在获取该搜索词对应商品的图片...", color="yellow")
+                    print_inline("正在获取该搜索词对应的详细信息...", color="yellow")
 
                     elements = soup.select('div[cel_widget_id*="MAIN-SEARCH_RESULTS-"]')
+
                     for element in elements:
-                        if element.select('div.udm-primary-delivery-message span.a-text-bold'):
+                        if img is not None and price_symbol is not None and price is not None and buy_number is not None:
+                            break
+
+                        if element.select('div.udm-primary-delivery-message span.a-text-bold') is None:
+                            continue
+
+                        if img is None:
                             img_el = element.find('img', class_='s-image')
-                            result = img_el['src'] if img_el and 'src' in img_el.attrs else None
+                            img_result = img_el['src'] if img_el and 'src' in img_el.attrs else None
+                            if img_result is not None and img_result.strip().startswith('http'):
+                                img = img_result
+                                print_inline("图片获取成功：" + img, color="green")
 
-                            if result is not None and len(result) > 0:
-                                img = result
-                                print_inline("图片获取成功：" + result, color="green")
-                                break
+                        if price_symbol is None or price is None:
+                            price_el = element.select_one('a[aria-describedby="price-link"]')
+                            if price_el:
+                                if price_symbol is None:
+                                    p_symbol_el = price_el.find('span', class_='a-price-symbol')
+                                    p_symbol = p_symbol_el.get_text().strip() if p_symbol_el else ''
+                                    if len(p_symbol) > 0:
+                                        price_symbol = p_symbol
+                                        print_inline("货币类型获取成功：" + price_symbol, color="green")
+
+                                if price is None:
+                                    p_whole_el = price_el.find('span', class_='a-price-whole')
+                                    if p_whole_el:
+                                        p_whole = p_whole_el.get_text().strip()
+                                        p_decimal_el = p_whole_el.find('span', class_='a-price-decimal')
+                                        p_decimal = p_decimal_el.text.strip() if p_decimal_el else ''
+                                        try:
+                                            price = int(p_whole.replace(',', '').replace(p_decimal, ''))
+                                            print_inline("价格获取成功：" + str(price), color="green")
+                                        except Exception:
+                                            pass
+
+                        if buy_number is None:
+                            buy_number_el = element.select_one('div[data-cy="reviews-block"]')
+                            if buy_number_el:
+                                b_number_el = buy_number_el.select_one('span.a-size-base.a-color-secondary')
+                                b_number_full = b_number_el.get_text().strip() if b_number_el else ''
+
+                                # 匹配模式：
+                                # (\d+)  —— 数字部分（整数）
+                                # \s*              —— 允许数字和单位之间有空格
+                                # (万|百万|千万|亿)? —— 单位，可选
+                                match = re.search(r'过去一个月有(\d+)\s*(万|百万|千万|亿)?\+?', b_number_full)
+                                if match:
+                                    try:
+                                        num_str, unit = match.groups()
+                                        num = int(num_str)
+
+                                        # 单位换算表
+                                        unit_map = {
+                                            None: 1,
+                                            '万': 10_000,
+                                            '百万': 1_000_000,
+                                            '千万': 10_000_000,
+                                            '亿': 100_000_000
+                                        }
+
+                                        factor = unit_map.get(unit, 1)
+                                        buy_number = int(num * factor)
+                                        print_inline("购买数量获取成功：" + str(buy_number), color="green")
+                                    except Exception:
+                                        pass
                     else:
-                        print_inline("图片获取失败，自动跳过", color="red")
+                        print_inline("图片或价格等信息获取失败，自动跳过（不影响流程，可忽略）", color="red")
 
-                saved_kw.append((kw.strip(), img))
+                saved_kw.append((kw.strip(), img, price_symbol, price, buy_number))
             else:
                 print_inline("该搜索词不符合预期条件，已忽略", color="red")  # , newline=False
             time.sleep(config["fetchDelay"])
@@ -364,13 +421,16 @@ try:
             ws.cell(row=2, column=2, value="图片").font = Font(bold=True)
 
             # 写入数据和超链接 & 图片
-            for i, (text, img_url) in enumerate(saved_kw, start=3):  # 从第3行开始写
+            for i, (text, img_url, _, _, _) in enumerate(saved_kw, start=3):  # 从第3行开始写
                 # 第一列：搜索词 + 超链接
                 cell = ws.cell(row=i, column=1, value=text)
                 cell.hyperlink = "https://www.amazon.co.jp/s?k=" + text
                 cell.style = "Hyperlink"
 
                 # 第二列：下载图片并插入
+                if img_url is None:
+                    continue
+
                 try:
                     resp = requests.get(img_url, timeout=10)
                     if resp.status_code == 200:
@@ -384,7 +444,7 @@ try:
                     print_inline(f"搜索词 {text} 的图片下载失败，已忽略: {img_url}\n{e}", color="red")
 
             # 自动调整第一列列宽
-            max_len = max(len(text) for (text, _) in saved_kw)
+            max_len = max(len(text) for (text, _, _, _, _) in saved_kw)
             ws.column_dimensions[get_column_letter(1)].width = max_len + 5
             ws.column_dimensions[get_column_letter(2)].width = 15  # 第二列图片列
 
@@ -406,8 +466,15 @@ try:
             print_inline("** 数据上传服务器失败，可能是 VPN 代理的问题。（不影响流程，可忽略） **", color="yellow")
 
     print_inline("程序执行完毕！", color="green")
-    input("按任意键退出...")
-except Exception as e:
-    print(e)
-    print_inline("程序执行出错！", color="red")
-    input("按任意键退出...")
+    util.press_any_key_exit()
+
+
+if __name__ == '__main__':
+    util.ensure_start_by_self()
+
+    try:
+        main()
+    except Exception as e:
+        print(e)
+        print_inline("程序执行出错！", color="red")
+        util.press_any_key_exit()

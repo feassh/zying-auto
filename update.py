@@ -80,9 +80,9 @@ def apply_update(zip_path, target_dir):
         # 增加了错误处理和更新后重启应用的功能
         bat_content = f"""@echo off
 echo.
-echo  ================================================
-echo   正在更新程序，请不要关闭此窗口...
-echo  ================================================
+echo ================================================
+echo 正在更新程序，请不要关闭此窗口...
+echo ================================================
 echo.
 
 REM 等待主程序完全退出
@@ -93,21 +93,32 @@ echo 正在复制新文件...
 xcopy "{temp_dir}" "{target_dir}" /E /Y /I /Q
 if errorlevel 1 (
     echo.
-    echo [错误] 文件复制失败！请尝试手动解压 update.zip 到程序目录。
+    echo ================================================
+    echo [错误] 文件复制失败！更新失败！（可尝试注销或重启电脑后重新更新）
     pause
-    exit
+    rmdir /s /q "{temp_dir}"
+    exit /b 0
 )
 
-REM 删除临时目录
+echo.
+echo ================================================
+echo 更新完成！正在启动最新程序...
+
+set TARGET_DIR={target_dir}
+set APP_EXE=主程序.exe
+if exist "%TARGET_DIR%\%APP_EXE%" (
+    start "" "%TARGET_DIR%\%APP_EXE%"
+    echo [成功] 已启动程序: %TARGET_DIR%\%APP_EXE%
+) else (
+    echo [错误] 未找到要启动的程序: %TARGET_DIR%\%APP_EXE%
+    echo 请检查目标目录和程序名称是否正确，并手动运行。
+    pause
+)
+
 echo 正在清理临时文件...
 rmdir /s /q "{temp_dir}"
 
-echo.
-echo  ================================================
-echo   更新完成！
-
-pause
-exit
+echo 更新完成！请手动关闭该窗口。
 """
         # 5. 创建并写入批处理文件，使用 utf-8 编码
         with open(bat_path, "w", encoding="gbk") as bat:
@@ -116,8 +127,8 @@ exit
         # 6. 启动批处理并退出当前程序
         # 直接执行bat文件，不带任何参数
         subprocess.Popen(f'"{bat_path}"', shell=True)
+        # subprocess.Popen(["cmd", "/k", bat_path])
         sys.exit(0)  # 正常退出
-
     except Exception as e:
         print(f"应用更新失败: {e}")
 
@@ -167,10 +178,12 @@ def upgrade():
 
 
 if __name__ == "__main__":
+    util.ensure_start_by_self()
+
     try:
         upgrade()
     except Exception as e:
         print(f"发生未知错误: {e}")
 
     # 如果更新流程没有通过 sys.exit() 退出，则会执行到这里
-    input("按 Enter 键退出...")
+    util.press_any_key_exit()

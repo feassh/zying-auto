@@ -10,7 +10,6 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
 
 import util
 from ui_main_window import Ui_mainWindow
-from util import is_debug
 
 
 class AsyncWorker(QThread):
@@ -124,7 +123,7 @@ class MyApp(QMainWindow):
 
         self.ui.pbStart.setText("🟢停止自动化🟢")
         self.running = True
-        self.process = subprocess.Popen([os.path.join(util.get_exe_dir(), "main.exe")])
+        self.process = subprocess.Popen([os.path.join(util.get_exe_dir(), "main.exe"), "run"])
 
     def pb_excel_path(self):
         directory_path = QFileDialog.getExistingDirectory(self, "选择文件夹")
@@ -152,7 +151,7 @@ class MyApp(QMainWindow):
 
             # 根据用户选择处理
             if result == QMessageBox.Ok:
-                subprocess.Popen([os.path.join(util.get_exe_dir(), "update.exe")])
+                subprocess.Popen([os.path.join(util.get_exe_dir(), "update.exe"), "run"])
                 QTimer.singleShot(0, QApplication.quit)
 
     def closeEvent(self, event):

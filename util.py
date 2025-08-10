@@ -10,6 +10,8 @@ import psutil
 import requests
 from PIL import ImageGrab
 
+cv2_window_name = "Image Process Result"
+
 
 def get_exe_dir():
     # PyInstaller打包后的程序，sys.executable 是exe路径
@@ -63,6 +65,15 @@ def is_admin():
         return os.geteuid() == 0
 
 
+def press_any_key_exit():
+    input("按 Enter (回车) 键退出程序...")
+
+
+def ensure_start_by_self():
+    if "run" not in sys.argv[1:]:
+        sys.exit(0)
+
+
 def get_update_info():
     try:
         resp = requests.get("https://cnb.cool/feassh/zying-auto/-/git/raw/main/version.json", timeout=10)
@@ -108,7 +119,9 @@ def kill_process_by_name(process_name):
         return False
 
 
-def get_next_page_point(rect):
+def get_next_page_point(rect, debug=False):
+    global cv2_window_name
+
     pil_image = ImageGrab.grab(bbox=(rect.left - 5, rect.top - 5, rect.right, rect.bottom + 5))
     img_bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
@@ -135,12 +148,25 @@ def get_next_page_point(rect):
     contours_gray = sorted(contours_gray, key=lambda c: cv2.boundingRect(c)[0])
     contours_blue = sorted(contours_blue, key=lambda c: cv2.boundingRect(c)[0])
 
+    if debug:
+        cv2.drawContours(img_bgr, contours_gray, -1, (30, 96, 139), 2)
+        cv2.drawContours(img_bgr, contours_blue, -1, (255, 206, 73), 2)
+
     current_page = None
     for cnt in contours_blue:
         x, y, w_box, h_box = cv2.boundingRect(cnt)
         if w_box > 22 and h_box > 22:
             current_page = (x, y, w_box, h_box)
+
+            if debug:
+                cv2.drawContours(img_bgr, [cnt], -1, (255, 0, 0), 3)
+
             break
+
+    if debug:
+        cv2.imshow(cv2_window_name, img_bgr)
+        cv2.moveWindow(cv2_window_name, 0, 700)
+        cv2.waitKey(1)
 
     if current_page is None:
         return None
@@ -152,7 +178,15 @@ def get_next_page_point(rect):
         if w_box > 22 and h_box > 22:
             if x > c_x:
                 next_page = (x, y, w_box, h_box)
+
+                if debug:
+                    cv2.drawContours(img_bgr, [cnt], -1, (0, 255, 0), 3)
+
                 break
+
+    if debug:
+        cv2.imshow(cv2_window_name, img_bgr)
+        cv2.waitKey(1)
 
     if next_page is None:
         return None
@@ -170,10 +204,13 @@ def save_kw_to_server(kws):
 
     try:
         data = []
-        for kw, img in kws:
+        for kw, img, price_symbol, price, buy_number in kws:
             data.append({
                 "kw": kw,
-                "img": img
+                "img": img,
+                "price_symbol": price_symbol,
+                "price": price,
+                "buy_number": buy_number,
             })
 
         resp = requests.post("https://zying.feassh.workers.dev/insertBatch", json={
@@ -182,6 +219,12 @@ def save_kw_to_server(kws):
         }, timeout=20)
         resp.raise_for_status()
 
-        return resp.json()["code"] == 0
-    except Exception:
+        data = resp.json()
+        if data["code"] == 0:
+            return True
+        else:
+            print(data)
+            return False
+    except Exception as e:
+        print(e)
         return False
