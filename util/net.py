@@ -1,0 +1,135 @@
+import json
+from typing import Optional, Any
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3 import Retry
+
+import config
+from util import app
+
+global_requests_session = None
+
+
+def create_session_with_retry() -> requests.Session:
+    """创建一个带有内置重试机制的 requests.Session 对象。"""
+    session = requests.Session()
+
+    retry_strategy = Retry(
+        # 总重试次数
+        total=config.get_config().get("retries", 0),
+        # 重试之间的等待时间
+        backoff_factor=config.get_config().get("retryDelay", 0),
+        # 需要重试的HTTP状态码
+        status_forcelist=[408, 429, 500, 502, 503, 504],
+        # 允许重试的请求方法
+        allowed_methods=["HEAD", "GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH", "CONNECT"],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
+    return session
+
+
+def get_requests_session():
+    global global_requests_session
+
+    if global_requests_session is None:
+        global_requests_session = create_session_with_retry()
+
+    return global_requests_session
+
+
+def get(
+        url,
+        params=None,
+        headers=None,
+        timeout=None,
+        stream=None
+):
+    response = get_requests_session().get(
+        url,
+        params=params,
+        headers=headers,
+        timeout=timeout if timeout else config.get_config().get("timeout", 60),
+        stream=stream,
+    )
+    response.raise_for_status()
+
+    return response
+
+
+def post(
+        url,
+        json_data=None,
+        headers=None,
+        timeout=None,
+        stream=None
+):
+    response = get_requests_session().post(
+        url,
+        json=json_data,
+        headers=headers,
+        timeout=timeout if timeout else config.get_config().get("timeout", 60),
+        stream=stream,
+    )
+    response.raise_for_status()
+
+    return response
+
+
+def get_update_info() -> tuple[Optional[dict[str, Any]], Optional[Exception]]:
+    try:
+        res = get("https://cnb.cool/feassh/zying-auto/-/git/raw/main/version.json", timeout=60)
+        return res.json(), None
+    except Exception as e:
+        return None, e
+
+
+def check_need_update() -> Optional[tuple[dict[str, Any], str]]:
+    current_version = app.get_version()
+    if len(current_version) == 0:
+        return None
+
+    info, _ = get_update_info()
+    if not info:
+        return None
+
+    latest_version = info.get("version")
+
+    if latest_version == current_version:
+        return None
+
+    return info, current_version
+
+
+def save_kw_to_server(kws) -> Optional[Exception]:
+    if kws is None or len(kws) == 0:
+        return None
+
+    data = []
+    for kw, img, price_symbol, price, buy_number in kws:
+        data.append({
+            "kw": kw,
+            "img": img,
+            "price_symbol": price_symbol,
+            "price": price,
+            "buy_number": buy_number,
+        })
+
+    try:
+        resp = post("https://zying.feassh.workers.dev/insertBatch", json_data={
+            "data": data,
+            "token": "feassh-zying-cf-worker-token"
+        })
+
+        data = resp.json()
+        if data.get("code", -1) == 0:
+            return None
+        else:
+            return Exception(json.dumps(data))
+    except Exception as e:
+        return e
+

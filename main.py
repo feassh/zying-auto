@@ -1,480 +1,458 @@
 import ctypes
 import math
-import os
 import re
-import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
+from typing import List, Optional
 
 import pyautogui
 import pyperclip
 import requests
 import win32gui
 from bs4 import BeautifulSoup
-from pywinauto.application import Application
-from rich.console import Console
-from typing import Literal
 from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
-from openpyxl.drawing.image import Image as XLImage
+from pywinauto import WindowSpecification
+from pywinauto.application import Application
+from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
+import config
 import util
 
-DEBUG = False
 
-console = Console()
-
-
-def check_load_finished(delay=5.0):
-    last_time = time.time()
-    while True:
-        if (10, 90, 160) == pyautogui.pixel(992, 594) or (10, 90, 160) == pyautogui.pixel(1006, 594) \
-                or (10, 90, 160) == pyautogui.pixel(1020, 594) or (10, 90, 160) == pyautogui.pixel(1033, 594):
-            last_time = time.time()
-        if time.time() - last_time >= delay:
-            break
-
-
-def print_inline(
-    text: str,
-    color: str = "white",
-    style: Literal["bold", "italic", "underline", "none"] = "none",
-    newline: bool = True
-):
-    """彩色文本 + 可覆盖当前行的控制台输出"""
-    style_prefix = f"{style} {color}" if style != "none" else color
-    end_char = "\n" if newline else "\r"
-    console.print(f"[{style_prefix}]{text}[/{style_prefix}]", end=end_char)
-
-
-def block_input(block: bool):
-    """启用或关闭用户输入"""
-    ctypes.windll.user32.BlockInput(block)
-
-
-def safe_click(x, y, duration=0.05):
-    try:
-        block_input(True)                 # 禁用用户输入
-        pyautogui.moveTo(x, y, duration=duration)
-        time.sleep(0.02)
-        pyautogui.click()
-    finally:
-        block_input(False)                # 重新启用用户输入
-        time.sleep(0.05)
-
-
-def safe_right_click(x, y, duration=0.05):
-    try:
-        block_input(True)                 # 禁用用户输入
-        pyautogui.moveTo(x, y, duration=duration)
-        time.sleep(0.02)
-        pyautogui.rightClick()
-    finally:
-        block_input(False)                # 重新启用用户输入
-        time.sleep(0.05)
-
-
-def main():
-    # 获取自身控制台窗口句柄
+def setup_console_window():
     hwnd = ctypes.windll.kernel32.GetConsoleWindow()
     if hwnd:
         screen_width, screen_height = pyautogui.size()
         # SWP_NOZORDER=0x4 保持层次
-        ctypes.windll.user32.SetWindowPos(hwnd, 0, 1120, 0, screen_width - 1120, math.ceil(screen_height / 1.2), 0x4)
+        ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 700, 1110, screen_height - 700, 0x4)
     else:
-        print_inline("找不到自身控制台窗口句柄，请手动将本软件窗口移至没有遮挡目标软件的地方", color="red")
+        util.system.print_inline("找不到自身控制台窗口句柄，请手动将本软件窗口移至没有遮挡目标软件的地方", color="red")
 
-    ################## 读取配置文件 ##################
-    config, ok = util.load_config()
-    if not ok:
-        print_inline("配置文件读取失败！" + config, color="red")
-        util.press_any_key_exit()
-        sys.exit()
 
-    DEBUG = config["debug"]
+def app_login() -> Application:
+    # 先结束已打开的所有 ZYing.exe 进程
+    util.system.kill_process_by_name("ZYing.exe")
 
-    if config['currentPage'] <= 0:
-        ################## 启动应用程序 ##################
-        # 先结束已打开的所有 ZYing.exe 进程
-        util.kill_process_by_name("ZYing.exe")
+    util.system.print_inline("正在启动目标应用程序...")
+    app = Application(backend="uia").start(config.get_config()['exePath'])
 
-        print_inline("正在启动目标应用程序...")
-        app = Application(backend="uia").start(config['exePath'])
+    # 等待登录窗口出现
+    while True:
+        if win32gui.FindWindow("WindowsForms10.Window.20008.app.0.34f5582_r3_ad1", None) != 0:
+            break
 
-        # 等待登录窗口出现
-        while True:
-            if win32gui.FindWindow("WindowsForms10.Window.20008.app.0.34f5582_r3_ad1", None) != 0:
-                break
+    # 连接到窗口
+    login_window = app.window(title="系统登录")
 
-        # 连接到窗口
-        login_window = app.window(title="系统登录")
+    # 等待窗口出现（重要！）
+    login_window.wait("visible", timeout=300)
 
-        # 等待窗口出现（重要！）
-        login_window.wait("visible", timeout=300)
+    util.system.print_inline("正在登录...", color="yellow")
+    input_username = login_window.child_window(auto_id="txtAcc")
+    input_pwd = login_window.child_window(auto_id="txtPwd")
 
-        print_inline("正在登录...", color="yellow")
-        input_username = login_window.child_window(auto_id="txtAcc")
-        input_pwd = login_window.child_window(auto_id="txtPwd")
-        bt_login = login_window.child_window(auto_id="btnLogin")
+    if input_username.window_text() == "":
+        input_username.set_focus()
+        input_username.type_keys(config.get_config()['user'])
 
-        if input_username.window_text() == "":
-            input_username.set_focus()  # 确保焦点
-            input_username.type_keys(config['user'])  # 输入用户名
+    input_pwd.set_focus()
+    input_pwd.type_keys(config.get_config()['pwd'] + "{ENTER}", with_spaces=True)
 
-        # 更安全的密码输入方式（避免明文记录）
-        input_pwd.set_focus()
-        input_pwd.type_keys(config['pwd'] + "{ENTER}", with_spaces=True)  # 支持特殊键
+    return app
 
-    ################## 进入主界面 ##################
-    app = Application(backend="win32").connect(title="分销系统", timeout=10)
+
+def navigate_to_target_page(auto_click=True) -> WindowSpecification:
+    util.system.print_inline("正在导航至目标页面...", color="blue")
+
+    app = Application(backend="win32").connect(title="分销系统", timeout=300)
 
     main_window = app.window(title="分销系统")
-    main_window.wait("visible", timeout=30)
+    main_window.wait("visible", timeout=300)
 
-    print_inline("正在初始化应用程序窗口...", color="green")
+    util.system.print_inline("正在初始化应用程序窗口...", color="green")
     main_window.set_focus()
     main_window.move_window(x=0, y=0, width=1110, height=700, repaint=True)
     time.sleep(1)
 
-    if config['currentPage'] <= 0:
-        ################## 操作主界面，进入指定界面 ##################
-        print_inline("正在定位到指定页面...", color="blue")
-        print_inline("点击【产品】选项卡")
-        safe_click(x=296, y=40)
-        time.sleep(1)
-        print_inline("点击【亚马逊选品】选项卡")
-        safe_click(x=56, y=678)
-        time.sleep(1)
-        print_inline("点击【搜索词排名】选项卡")
-        safe_click(x=71, y=618)
-        check_load_finished()
-        print_inline("点击【日本】选项卡")
-        safe_click(x=329, y=77)
-        check_load_finished()
-        print_inline("点击【50000+】筛选条件")
-        safe_click(x=747, y=159)
-        check_load_finished()
-        print_inline("点击【排名上升+】筛选条件")
-        safe_click(x=494, y=265)
-        check_load_finished()
-        print_inline("点击【1万+】筛选条件")
-        safe_click(x=655, y=299)
-        check_load_finished()
+    if not auto_click:
+        return main_window
 
+    steps = [
+        ("点击【产品】选项卡", 296, 40),
+        ("点击【亚马逊选品】选项卡", 56, 678),
+        ("点击【搜索词排名】选项卡", 71, 618),
+        ("点击【日本】选项卡", 329, 77),
+        ("点击【50000+】筛选条件", 747, 159),
+        ("点击【排名上升+】筛选条件", 494, 265),
+        ("点击【1万+】筛选条件", 655, 299),
+    ]
+
+    for desc, x, y in steps:
+        util.system.print_inline(desc)
+        util.system.safe_click(x, y)
+        util.app.check_load_finished()
+
+    return main_window
+
+
+def get_total_kw_page_and_item(window: WindowSpecification) -> tuple[int, int]:
     total_item = 0
     total_page = 0
-    match = re.search(r'共有\s*(\d+)\s*条记录', main_window.child_window(auto_id="lblTotal").window_text())
+
+    match = re.search(r'共有\s*(\d+)\s*条记录', window.child_window(auto_id="lblTotal").window_text())
     if match:
         total_item = int(match.group(1))
         total_page = math.ceil(total_item / 60)
-    if total_item <= 0:
-        print_inline("搜索词分页数据获取失败！程序已终止运行。", color="red")
-        util.press_any_key_exit()
-        sys.exit()
-    else:
-        print_inline(f"共获取到 {total_item} 条搜索词数据，一共 {total_page} 页", color="green")
 
-    ################## 获取数据 ##################
+    return total_item, total_page
+
+
+def get_amazon_cookies() -> str:
+    """从亚马逊获取最新的Cookie。如果失败，则使用硬编码的备用Cookie。"""
     try:
-        print_inline("正在获取最新 Cookie 数据...")
+        util.system.print_inline("正在尝试获取最新的亚马逊 Cookie...")
 
-        # resp = requests.get(
-        #     "https://www.amazon.co.jp/s?k=70mai",
-        #     headers={
-        #         "Content-Type": "application/json",
-        #         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
-        #     },
-        #     timeout=60,
-        #     stream=True # 使用 resp.cookies.get 必须开启 stream
-        # )
-        # resp.raise_for_status()
-        #
-        # resp2 = requests.post(
-        #     "https://www.amazon.co.jp/portal-migration/hz/glow/address-change?actionSource=glow",
-        #     json={"locationType": "LOCATION_INPUT", "zipCode": "169-0074", "deviceType": "web",
-        #           "storeContext": "hpc",
-        #           "pageType": "Detail", "actionSource": "glow"},
-        #     headers={
-        #         "Content-Type": "application/json",
-        #         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0",
-        #         "Cookie": resp.headers.get("set-cookie"),
-        #     },
-        #     timeout=60,
-        #     stream=True
-        # )
-        # resp2.raise_for_status()
+        # 先获取 session-id
+        res_session_id = util.net.get(
+            "https://www.amazon.co.jp/s?k=cat",
+            headers={
+                "Content-Type": "text/html;charset=UTF-8",
+                "User-Agent": config.user_agent,
+            },
+            stream=True
+        )
 
-        # cookies_raw = "ubid-acbjp=" + resp2.cookies.get("ubid-acbjp", "") + "; session-id=" + resp.cookies.get("session-id", "")
-        cookies_raw = "ubid-acbjp=355-5685452-2837352; session-id=357-7564356-4927846"
-    except Exception as e:
-        print_inline(f"{e}", color="red")
-        print_inline("最新 Cookie 数据获取失败，将使用临时数据", color="yellow")
+        # 再获取 ubid-acbjp
+        res_ubid = util.net.post(
+            "https://www.amazon.co.jp/portal-migration/hz/glow/address-change?actionSource=glow",
+            json_data={
+                "locationType": "LOCATION_INPUT",
+                "zipCode": "169-0074",
+                "deviceType": "web",
+                "storeContext": "hpc",
+                "pageType": "Detail",
+                "actionSource": "glow"
+            },
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": config.user_agent,
+                "Cookie": res_session_id.headers.get("set-cookie"),
+            },
+            stream=True
+        )
 
-        cookies_raw = "ubid-acbjp=355-5685452-2837352; session-id=357-7564356-4927846"
-
-    page_rect = main_window.child_window(auto_id="PTurn").rectangle()
-
-    for cur_page in range(0 if config['currentPage'] <= 0 else (config['currentPage'] - 1), total_page):
-        print_inline(f"正在获取第 {cur_page + 1}/{total_page} 页搜索词列表...")
-        main_window.set_focus()
-        time.sleep(1)
-        safe_click(x=541, y=647)
-        time.sleep(1)
-
-        if cur_page == 0:
-            safe_click(x=155, y=600)
+        session_id = res_session_id.cookies.get("session-id", "")
+        ubid = res_ubid.cookies.get("ubid-acbjp", "")
+        if len(session_id) == 0 or len(ubid) == 0:
+            raise Exception("Response is ok, but values are empty")
         else:
-            while True:
-                point = util.get_next_page_point(page_rect, debug=DEBUG)
-                if point is not None:
-                    x, y = point
-                    safe_click(x=x, y=y)
-                    break
-                else:
-                    time.sleep(1)
+            return "ubid-acbjp=" + ubid + "; session-id=" + session_id
+    except Exception as e:
+        util.system.print_inline(f"Cookie 获取失败: {e}", color="red")
+        util.system.print_inline("将使用备用的 Cookie 数据。", color="yellow")
 
-        check_load_finished()
-        pyperclip.copy("")
-        safe_right_click(x=233, y=464)
-        time.sleep(1)
-        safe_click(x=287, y=504)
-        time.sleep(1)
-        kw_list = pyperclip.paste().splitlines()
-        print_inline(f"成功获取到 {len(kw_list)} 个搜索词", color="blue")
+        # 从浏览器开发者工具中拿到的 Cookie 数据，有效期一年
+        return "ubid-acbjp=355-5685452-2837352; session-id=357-7564356-4927846"
 
-        saved_kw = []
-        i = 0
-        for kw in kw_list:
-            i += 1
-            print_inline(f"当前正在筛选搜索词 (第 {cur_page + 1}/{total_page} 页, 第 {i}/{len(kw_list)}) 个：" + kw,
-                         color="yellow")  # , newline=False
 
-            try:
-                response = requests.get(
-                    "https://www.amazon.co.jp/s?k=" + kw.strip() + "&language=zh_CN",
-                    timeout=60,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0",
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-                        "Accept-Encoding": "gzip, deflate, br, zstd",
-                        "Cookie": cookies_raw,
-                    },
-                )
-                response.raise_for_status()
+def process_keyword(kw: str, cookies: str) -> Optional[tuple]:
+    """为单个关键词从亚马逊获取并解析数据。"""
+    try:
+        res = util.net.get(
+            f"https://www.amazon.co.jp/s?k={kw.strip()}&language=zh_CN",
+            headers={
+                "User-Agent": config.user_agent,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Cookie": cookies,
+            }
+        )
 
-                res_html = response.text
-            except Exception as e:
-                print_inline(str(e), color="red")
-                print_inline("获取失败，自动筛选下一个搜索词...（若频繁超时，请检查本地网络与VPN）", color="red")
-                time.sleep(config["fetchDelay"])
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        # 检查是否被亚马逊风控
+        if "ご迷惑をおかけしています" in soup.title.string:
+            util.system.print_inline("遇到亚马逊风控，操作终止", color="red")
+            return None
+
+        if "Amazon.co.jp" not in soup.title.string:
+            util.system.print_inline("注意，获取的网页结果可能存在问题", color="yellow")
+
+        delivery_messages = soup.select("div.udm-primary-delivery-message span.a-text-bold")
+
+        count = 0
+        today = date.today()
+        for el in delivery_messages:
+            match = re.search(r'(\d{1,2})月(\d{1,2})日', el.get_text())
+            if not match:
                 continue
 
-            soup = BeautifulSoup(res_html, "html.parser")
+            month, day = int(match.group(1)), int(match.group(2))
 
             try:
-                if "ご迷惑をおかけしています" in soup.title.string:
-                    print_inline("遇到亚马逊风控，访问终止，自动筛选下一个搜索词...", color="red")
-                    time.sleep(config["fetchDelay"])
-                    continue
+                target_date = date(today.year, month, day)
+                if (target_date - today).days >= config.get_config()['minDateInterval']:
+                    count += 1
+            except ValueError:
+                continue  # 忽略无效日期，如2月30日
 
-                if "Amazon.co.jp" not in soup.title.string:
-                    print_inline("注意，获取的网页结果可能存在问题", color="yellow")
+        if count < config.get_config()['matchCount']:
+            return None
 
-                els = soup.select("div.udm-primary-delivery-message span.a-text-bold")
-            except Exception as e:
-                print_inline("抓取该搜索词时发生错误：" + str(e), color="red")
-                els = []
+        img = None
+        price_symbol = None
+        price = None
+        buy_number = None
 
-            count = 0
-            for el in els:
-                match = re.search(r'(\d{1,2})月(\d{1,2})日', el.get_text())
-                if match:
-                    month = int(match.group(1))
-                    day = int(match.group(2))
+        elements = soup.select('div[cel_widget_id*="MAIN-SEARCH_RESULTS-"]')
+        for element in elements:
+            if img is not None and price_symbol is not None and price is not None and buy_number is not None:
+                break
 
-                    today = date.today()
-                    current_year = today.year
+            if element.select('div.udm-primary-delivery-message span.a-text-bold') is None:
+                continue
 
-                    try:
-                        target_date = date(current_year, month, day)
+            if img is None:
+                img_el = element.find('img', class_='s-image')
+                img_result = img_el['src'] if img_el and 'src' in img_el.attrs else None
+                if img_result is not None and img_result.strip().startswith('http'):
+                    img = img_result
 
-                        delta = (target_date - today).days
-                        if delta >= config['minDateInterval']:
-                            count += 1
-                    except ValueError:
-                        continue
-                        # print_inline("非法日期，比如 2月30日 之类", color="red")
-                else:
-                    continue
-                    # print_inline("未匹配到日期", color="red")
+            if price_symbol is None or price is None:
+                price_el = element.select_one('a[aria-describedby="price-link"]')
+                if price_el:
+                    if price_symbol is None:
+                        p_symbol_el = price_el.find('span', class_='a-price-symbol')
+                        p_symbol = p_symbol_el.get_text().strip() if p_symbol_el else ''
+                        if len(p_symbol) > 0:
+                            price_symbol = p_symbol
 
-            if count >= config['matchCount']:
-                print_inline("该搜索词符合预期条件，已记录", color="green")  # , newline=False
+                    if price is None:
+                        p_whole_el = price_el.find('span', class_='a-price-whole')
+                        if p_whole_el:
+                            p_whole = p_whole_el.get_text().strip()
+                            p_decimal_el = p_whole_el.find('span', class_='a-price-decimal')
+                            p_decimal = p_decimal_el.text.strip() if p_decimal_el else ''
+                            try:
+                                price = int(p_whole.replace(',', '').replace(p_decimal, ''))
+                            except Exception:
+                                pass
 
-                img = None
-                price_symbol = None
-                price = None
-                buy_number = None
-                if len(els) > 0:
-                    print_inline("正在获取该搜索词对应的详细信息...", color="yellow")
+            if buy_number is None:
+                buy_number_el = element.select_one('div[data-cy="reviews-block"]')
+                if buy_number_el:
+                    b_number_el = buy_number_el.select_one('span.a-size-base.a-color-secondary')
+                    b_number_full = b_number_el.get_text().strip() if b_number_el else ''
 
-                    elements = soup.select('div[cel_widget_id*="MAIN-SEARCH_RESULTS-"]')
+                    # 匹配模式：
+                    # (\d+)            —— 数字部分（整数）
+                    # \s*              —— 允许数字和单位之间有空格
+                    # (万|百万|千万|亿)? —— 单位，可选
+                    match = re.search(r'过去一个月有(\d+)\s*(万|百万|千万|亿)?\+?', b_number_full)
+                    if match:
+                        try:
+                            num_str, unit = match.groups()
+                            num = int(num_str)
 
-                    for element in elements:
-                        if img is not None and price_symbol is not None and price is not None and buy_number is not None:
-                            break
+                            # 单位换算表
+                            unit_map = {
+                                None: 1,
+                                '万': 10_000,
+                                '百万': 1_000_000,
+                                '千万': 10_000_000,
+                                '亿': 100_000_000
+                            }
 
-                        if element.select('div.udm-primary-delivery-message span.a-text-bold') is None:
-                            continue
+                            factor = unit_map.get(unit, 1)
+                            buy_number = int(num * factor)
+                        except Exception:
+                            pass
 
-                        if img is None:
-                            img_el = element.find('img', class_='s-image')
-                            img_result = img_el['src'] if img_el and 'src' in img_el.attrs else None
-                            if img_result is not None and img_result.strip().startswith('http'):
-                                img = img_result
-                                print_inline("图片获取成功：" + img, color="green")
+        return kw.strip(), img, price_symbol, price, buy_number
+    except requests.exceptions.RequestException as e:
+        # 重试机制会处理此问题，但如果所有重试都失败，最好记录下来。
+        util.system.print_inline(f"关键词 '{kw}' 请求失败: {e}", color="red")
+        return None
+    except Exception as e:
+        util.system.print_inline(f"处理关键词 '{kw}' 时出错: {e}", color="red")
+        return None
 
-                        if price_symbol is None or price is None:
-                            price_el = element.select_one('a[aria-describedby="price-link"]')
-                            if price_el:
-                                if price_symbol is None:
-                                    p_symbol_el = price_el.find('span', class_='a-price-symbol')
-                                    p_symbol = p_symbol_el.get_text().strip() if p_symbol_el else ''
-                                    if len(p_symbol) > 0:
-                                        price_symbol = p_symbol
-                                        print_inline("货币类型获取成功：" + price_symbol, color="green")
 
-                                if price is None:
-                                    p_whole_el = price_el.find('span', class_='a-price-whole')
-                                    if p_whole_el:
-                                        p_whole = p_whole_el.get_text().strip()
-                                        p_decimal_el = p_whole_el.find('span', class_='a-price-decimal')
-                                        p_decimal = p_decimal_el.text.strip() if p_decimal_el else ''
-                                        try:
-                                            price = int(p_whole.replace(',', '').replace(p_decimal, ''))
-                                            print_inline("价格获取成功：" + str(price), color="green")
-                                        except Exception:
-                                            pass
+def process_page_concurrently(
+        window,
+        page_rect,
+        cur_page: int,
+        total_pages: int,
+        cookies: str
+) -> List[tuple]:
+    """处理单个页面的UI交互，获取关键词列表，并并发处理它们。"""
+    util.system.print_inline(f"\n--- 正在获取第 {cur_page + 1}/{total_pages} 页搜索词列表 ---", style="bold")
 
-                        if buy_number is None:
-                            buy_number_el = element.select_one('div[data-cy="reviews-block"]')
-                            if buy_number_el:
-                                b_number_el = buy_number_el.select_one('span.a-size-base.a-color-secondary')
-                                b_number_full = b_number_el.get_text().strip() if b_number_el else ''
+    window.set_focus()
+    time.sleep(1)
 
-                                # 匹配模式：
-                                # (\d+)  —— 数字部分（整数）
-                                # \s*              —— 允许数字和单位之间有空格
-                                # (万|百万|千万|亿)? —— 单位，可选
-                                match = re.search(r'过去一个月有(\d+)\s*(万|百万|千万|亿)?\+?', b_number_full)
-                                if match:
-                                    try:
-                                        num_str, unit = match.groups()
-                                        num = int(num_str)
+    # 点击一下空白区域，让页码按钮从 hover 状态退出，防止接下来 OpenCV 轮廓识别错误
+    util.system.safe_click(x=541, y=647)
+    time.sleep(1)
 
-                                        # 单位换算表
-                                        unit_map = {
-                                            None: 1,
-                                            '万': 10_000,
-                                            '百万': 1_000_000,
-                                            '千万': 10_000_000,
-                                            '亿': 100_000_000
-                                        }
-
-                                        factor = unit_map.get(unit, 1)
-                                        buy_number = int(num * factor)
-                                        print_inline("购买数量获取成功：" + str(buy_number), color="green")
-                                    except Exception:
-                                        pass
-                    else:
-                        print_inline("图片或价格等信息获取失败，自动跳过（不影响流程，可忽略）", color="red")
-
-                saved_kw.append((kw.strip(), img, price_symbol, price, buy_number))
+    # 导航到正确的页面
+    if cur_page == 0:
+        util.system.safe_click(x=155, y=600)
+    else:
+        while True:
+            point = util.cv.get_next_page_point(page_rect)
+            if point:
+                util.system.safe_click(x=point[0], y=point[1])
+                break
             else:
-                print_inline("该搜索词不符合预期条件，已忽略", color="red")  # , newline=False
-            time.sleep(config["fetchDelay"])
+                time.sleep(1)
 
-        # 将该页的数据保存为 Excel
-        if len(saved_kw) <= 0:
-            print_inline("当前页筛选后的搜索词数量为 0，跳过保存为 Excel 的步骤", color="yellow")
-            continue
-        else:
-            print_inline(f"当前页筛选后的搜索词数量为 {len(saved_kw)} 个，正在生成 Excel 文件...", color="yellow")
+    util.app.check_load_finished()
 
-        try:
-            # 创建工作簿和工作表
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "亚马逊搜索词"
+    # 复制关键词到剪贴板
+    pyperclip.copy("")
+    util.system.safe_right_click(x=233, y=464)
+    time.sleep(0.5)
+    util.system.safe_click(x=287, y=504)
+    time.sleep(0.5)
 
-            # 设置标题
-            title = "亚马逊 [日本]区域 搜索词"
-            ws['A1'] = title
-            ws['A1'].font = Font(bold=True)
+    kw_list = [kw for kw in pyperclip.paste().splitlines() if kw]
 
-            # 列标题（第二行）
-            ws.cell(row=2, column=1, value="搜索词").font = Font(bold=True)
-            ws.cell(row=2, column=2, value="图片").font = Font(bold=True)
+    if not kw_list:
+        util.system.print_inline("此页未找到关键词。", color="yellow")
+        return []
 
-            # 写入数据和超链接 & 图片
-            for i, (text, img_url, _, _, _) in enumerate(saved_kw, start=3):  # 从第3行开始写
-                # 第一列：搜索词 + 超链接
-                cell = ws.cell(row=i, column=1, value=text)
-                cell.hyperlink = "https://www.amazon.co.jp/s?k=" + text
-                cell.style = "Hyperlink"
+    concurrency = config.get_config()['concurrency']
+    util.system.print_inline(f"获取到 {len(kw_list)} 个搜索词，正在使用 {concurrency} 个并发线程进行处理...")
 
-                # 第二列：下载图片并插入
-                if img_url is None:
-                    continue
+    saved_kw = []
 
-                try:
-                    resp = requests.get(img_url, timeout=10)
-                    if resp.status_code == 200:
-                        img_data = BytesIO(resp.content)
-                        img = XLImage(img_data)
-                        img.width, img.height = 80, 80  # 缩放图片大小
-                        img_cell = f"B{i}"
-                        ws.add_image(img, img_cell)
-                        ws.row_dimensions[i].height = 65  # 调整行高
-                except Exception as e:
-                    print_inline(f"搜索词 {text} 的图片下载失败，已忽略: {img_url}\n{e}", color="red")
+    # 使用 rich.progress 创建一个进度条
+    with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            "[progress.percentage]{task.percentage:>3.0f}%",
+            TimeRemainingColumn(),
+    ) as progress:
+        task = progress.add_task("[cyan]正在筛选...", total=len(kw_list))
 
-            # 自动调整第一列列宽
-            max_len = max(len(text) for (text, _, _, _, _) in saved_kw)
-            ws.column_dimensions[get_column_letter(1)].width = max_len + 5
-            ws.column_dimensions[get_column_letter(2)].width = 15  # 第二列图片列
+        # 使用线程池执行并发任务
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            # 提交所有任务
+            future_to_kw = {executor.submit(process_keyword, kw, cookies): kw for kw in kw_list}
 
-            # 保存文件，文件名使用当前日期
-            filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + f"-第{cur_page + 1}页" + ".xlsx"
-            output_dir = Path(
-                config['excelPath'] if config['excelPath'] != "" else os.path.join(util.get_exe_dir(), "excel"))
-            output_dir.mkdir(parents=True, exist_ok=True)
-            wb.save(output_dir / filename)
-            print_inline(f"已将数据存储为 Excel 文件：{filename}", color="green")
-        except Exception as e:
-            print_inline(str(e), color="red")
-            print_inline("Excel 生成失败！", color="red")
+            # 获取已完成任务的结果
+            for future in as_completed(future_to_kw):
+                result = future.result()
+                if result:
+                    saved_kw.append(result)
+                progress.update(task, advance=1)  # 更新进度条
 
-        # 数据上传到服务器
-        if util.save_kw_to_server(saved_kw):
-            print_inline("** 数据已同步上传到服务器端 **", color="green")
-        else:
-            print_inline("** 数据上传服务器失败，可能是 VPN 代理的问题。（不影响流程，可忽略） **", color="yellow")
+    return saved_kw
 
-    print_inline("程序执行完毕！", color="green")
-    util.press_any_key_exit()
+
+def save_results(saved_kw: List[tuple], cur_page: int):
+    """将处理后的关键词数据保存到Excel文件。"""
+    if not saved_kw:
+        util.system.print_inline("当前页筛选后的搜索词数量为 0，跳过生成Excel文件。", color="yellow")
+        return
+
+    util.system.print_inline(f"正在为 {len(saved_kw)} 个关键词生成Excel文件...", color="yellow")
+
+    wb = Workbook()
+    ws = wb.active
+
+    ws.title = "亚马逊关键词"
+    ws['A1'] = "亚马逊 [日本] 区域关键词"
+    ws['A1'].font = Font(bold=True, size=14)
+
+    headers = ["关键词", "图片"]
+    for col, header in enumerate(headers, 1):
+        ws.cell(row=2, column=col, value=header).font = Font(bold=True)
+
+    for i, (text, img_url, *_) in enumerate(saved_kw, start=3):
+        cell = ws.cell(row=i, column=1, value=text)
+        cell.hyperlink = f"https://www.amazon.co.jp/s?k={text}"
+        cell.style = "Hyperlink"
+
+        if img_url:
+            try:
+                resp = util.net.get(img_url)
+                img = XLImage(BytesIO(resp.content))
+                img.width, img.height = 80, 80
+                ws.add_image(img, f"B{i}")
+                ws.row_dimensions[i].height = 65
+            except Exception as e:
+                util.system.print_inline(f"搜索词 {text} 的图片下载失败，已忽略: {img_url}\n{e}", color="red")
+
+    max_len = max(len(text) for text, *_ in saved_kw)
+    ws.column_dimensions[get_column_letter(1)].width = max_len + 5
+    ws.column_dimensions[get_column_letter(2)].width = 15
+
+    try:
+        output_dir = Path(config.get_config()['excelPath'] or Path(util.system.get_exe_dir()) / "excel")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + f"-第{cur_page + 1}页.xlsx"
+        wb.save(output_dir / filename)
+
+        util.system.print_inline(f"已将数据存储为 Excel 文件：{filename}", color="green")
+    except Exception as e:
+        util.system.print_inline(f"保存 Excel 文件失败: {e}", color="red")
+
+    # 数据上传到服务器
+    ex = util.net.save_kw_to_server(saved_kw)
+    if ex is None:
+        util.system.print_inline("** 数据已同步上传到服务器端 **", color="green")
+    else:
+        util.system.print_inline(f"** 数据上传服务器失败（不影响流程，可忽略）：{ex} **", color="yellow")
+
+
+def main():
+    config.DEBUG = config.get_config()["debug"]
+
+    setup_console_window()
+
+    # 根据配置决定是启动新应用还是连接现有应用
+    config_current_page = config.get_config()['currentPage']
+    if config_current_page <= 0:
+        app_login()
+
+    main_window = navigate_to_target_page(config_current_page <= 0)
+
+    total_item, total_page = get_total_kw_page_and_item(main_window)
+
+    if total_item <= 0:
+        util.system.print_inline("搜索词分页数据获取失败！程序已终止运行。", color="red")
+        util.app.press_any_key_exit()
+    else:
+        util.system.print_inline(f"共获取到 {total_item} 条搜索词数据，一共 {total_page} 页", color="green")
+
+    amazon_cookies = get_amazon_cookies()
+    page_rect = main_window.child_window(auto_id="PTurn").rectangle()
+    if config_current_page <= 0: config_current_page = 1
+
+    for cur_page in range(config_current_page - 1, total_page):
+        saved_keywords = process_page_concurrently(main_window, page_rect, cur_page, total_page, amazon_cookies)
+        save_results(saved_keywords, cur_page)
+
+    util.system.print_inline("\n所有任务均已执行完毕！", color="green", style="bold")
+    util.app.press_any_key_exit()
 
 
 if __name__ == '__main__':
-    util.ensure_start_by_self()
+    util.app.ensure_start_by_self()
 
     try:
         main()
     except Exception as e:
+        # console.print_exception(show_locals=True)
         print(e)
-        print_inline("程序执行出错！", color="red")
-        util.press_any_key_exit()
+        util.system.print_inline("程序发生未预料的严重错误！已结束运行。", color="red")
+        util.app.press_any_key_exit()

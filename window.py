@@ -3,18 +3,20 @@ import json
 import os
 import subprocess
 import sys
+from typing import Optional, Any
 
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QUrl
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
 
 import util
+import config
 from ui_main_window import Ui_mainWindow
 
 
 class AsyncWorker(QThread):
     # 定义信号，用于将异步任务的结果传递回主线程
-    result_signal = pyqtSignal(tuple)
+    result_signal = pyqtSignal(object)
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -26,7 +28,7 @@ class AsyncWorker(QThread):
         self.result_signal.emit(result)
 
     async def async_task(self):
-        return util.check_need_update()
+        return util.net.check_need_update()
 
 class MyApp(QMainWindow):
     def __init__(self):
@@ -34,31 +36,33 @@ class MyApp(QMainWindow):
         self.ui = Ui_mainWindow()
         self.ui.setupUi(self)
 
-        self.window().setWindowTitle(self.window().windowTitle() + " - " + util.get_version())
+        self.window().setWindowTitle(self.window().windowTitle() + " - " + util.app.get_version())
         self.window().setFixedSize(self.window().size().width(), self.window().size().height())
 
         self.process = None
         self.running = False
 
-        config, ok = util.load_config()
-        if ok:
-            self.ui.leExePath.setText(config.get("exePath", ""))
-            self.ui.leUser.setText(config.get("user", ""))
-            self.ui.lePwd.setText(config.get("pwd", ""))
-            self.ui.sbMinDateInterval.setValue(config.get("minDateInterval", 0))
-            self.ui.sbMaxDateInterval.setValue(config.get("maxDateInterval", 0))
-            self.ui.sbMatchCount.setValue(config.get("matchCount", 0))
-            self.ui.sbFetchDelay.setValue(config.get("fetchDelay", 0))
-            self.ui.sbConcurrency.setValue(config.get("concurrency", 0))
-            self.ui.leExcelPath.setText(config.get("excelPath", ""))
-            self.ui.cbDebug.setChecked(config.get("debug", False))
+        config_data = config.get_config(throw_exception=False)
+        self.ui.leExePath.setText(config_data.get("exePath", ""))
+        self.ui.leUser.setText(config_data.get("user", ""))
+        self.ui.lePwd.setText(config_data.get("pwd", ""))
+        self.ui.sbMinDateInterval.setValue(config_data.get("minDateInterval", 10))
+        self.ui.sbMaxDateInterval.setValue(config_data.get("maxDateInterval", 30)) ##########
+        self.ui.sbMatchCount.setValue(config_data.get("matchCount", 5))
+        self.ui.sbFetchDelay.setValue(config_data.get("fetchDelay", 0)) ###########
+        self.ui.sbConcurrency.setValue(config_data.get("concurrency", 5))
+        self.ui.sbRetries.setValue(config_data.get("retries", 3))
+        self.ui.sbRetryDelay.setValue(config_data.get("retryDelay", 3))
+        self.ui.sbTimeout.setValue(config_data.get("timeout", 60))
+        self.ui.leExcelPath.setText(config_data.get("excelPath", ""))
+        self.ui.cbDebug.setChecked(config_data.get("debug", False))
 
         self.ui.pbExePath.clicked.connect(self.pb_exe_path)
         self.ui.pbStart.clicked.connect(self.pb_start)
         self.ui.pbExcelPath.clicked.connect(self.pb_excel_path)
         self.ui.pbOpenWebsite.clicked.connect(self.pb_open_website)
 
-        if not util.is_admin():
+        if not util.system.is_admin():
             QMessageBox.critical(self, "提示", "请使用管理员方式运行本软件")
             QTimer.singleShot(0, QApplication.quit)
             return
@@ -98,6 +102,9 @@ class MyApp(QMainWindow):
         fetch_delay = int(self.ui.sbFetchDelay.value())
         concurrency = int(self.ui.sbConcurrency.value())
         current_page = int(self.ui.sbCurrentPage.value()) # 该字段只存储，不读取
+        retries = int(self.ui.sbRetries.value())
+        retry_delay = int(self.ui.sbRetryDelay.value())
+        timeout = int(self.ui.sbTimeout.value())
         excel_path = self.ui.leExcelPath.text()
         debug = self.ui.cbDebug.isChecked()
 
@@ -115,15 +122,21 @@ class MyApp(QMainWindow):
             "fetchDelay": fetch_delay,
             "concurrency": concurrency,
             "currentPage": current_page,
+            "retries": retries,
+            "retryDelay": retry_delay,
+            "timeout": timeout,
             "excelPath": excel_path,
             "debug": debug
         })
 
-        util.save_config(config_data)
+        e = config.save_config(config_data)
+        if isinstance(e, Exception):
+            QMessageBox.critical(self, "提示", f"启动失败！配置信息保存失败！\n{e}")
+            return
 
         self.ui.pbStart.setText("🟢停止自动化🟢")
         self.running = True
-        self.process = subprocess.Popen([os.path.join(util.get_exe_dir(), "main.exe"), "run"])
+        self.process = subprocess.Popen([os.path.join(util.system.get_exe_dir(), "main.exe"), "run"])
 
     def pb_excel_path(self):
         directory_path = QFileDialog.getExistingDirectory(self, "选择文件夹")
@@ -133,26 +146,29 @@ class MyApp(QMainWindow):
     def pb_open_website(self):
         QDesktopServices.openUrl(QUrl("https://zying.woc.cool"))
 
-    def update_app(self, result: tuple):
-        desc, ok = result
-        if ok:
-            msg_box = QMessageBox()
-            msg_box.setWindowTitle("提示")
-            msg_box.setText("检测到新版本，更新内容：\n\n" + desc)
-            msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-            msg_box.setDefaultButton(QMessageBox.Ok)
+    def update_app(self, result: Optional[tuple[dict[str, Any], str]]):
+        if not result:
+            return
 
-            # 设置按钮的文本（可选，中文化）
-            msg_box.button(QMessageBox.Ok).setText("更新")
-            msg_box.button(QMessageBox.Cancel).setText("取消")
+        new_version, _ = result
 
-            # 显示消息框并获取用户选择
-            result = msg_box.exec_()
+        msg_box = QMessageBox()
+        msg_box.setWindowTitle("提示")
+        msg_box.setText(f'检测到新版本，更新内容：\n\n{new_version.get("desc")}')
+        msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        msg_box.setDefaultButton(QMessageBox.Ok)
 
-            # 根据用户选择处理
-            if result == QMessageBox.Ok:
-                subprocess.Popen([os.path.join(util.get_exe_dir(), "update.exe"), "run"])
-                QTimer.singleShot(0, QApplication.quit)
+        # 设置按钮的文本（可选，中文化）
+        msg_box.button(QMessageBox.Ok).setText("更新")
+        msg_box.button(QMessageBox.Cancel).setText("取消")
+
+        # 显示消息框并获取用户选择
+        result = msg_box.exec_()
+
+        # 根据用户选择处理
+        if result == QMessageBox.Ok:
+            subprocess.Popen([os.path.join(util.system.get_exe_dir(), "update.exe"), "run"])
+            QTimer.singleShot(0, QApplication.quit)
 
     def closeEvent(self, event):
         # 窗口关闭前终止子进程

@@ -9,7 +9,7 @@ import zipfile
 import hashlib
 from tqdm import tqdm
 
-import util
+from util import system, net, app
 
 UPDATE_ZIP_NAME = "update.zip"  # 下载的文件名
 
@@ -135,30 +135,24 @@ echo 更新完成！请手动关闭该窗口。
 
 def upgrade():
     """检查并执行升级流程"""
-    current_version = util.get_version()
-
     print("正在检查更新...")
-    info, ok = util.get_update_info()
-    if not ok:
-        print(info)  # 打印错误信息
-        print("更新失败！版本信息获取失败！")
+
+    new_version, current_version = net.check_need_update()
+    if new_version is None:
+        print("已经是最新版本，无需更新。")
         return
 
-    latest_version = info.get("version")
-    update_url = info.get("downloadUrl")
-    expected_hash = info.get("hash")
+    latest_version = new_version.get("version")
+    update_url = new_version.get("downloadUrl")
+    expected_hash = new_version.get("hash")
 
     print(f"当前版本: {current_version}")
     print(f"最新版本: {latest_version}")
 
-    if latest_version == current_version:
-        print("已经是最新版本，无需更新。")
-        return
-
     print("发现新版本，准备下载更新...")
 
     # 先强行结束 ZYing.exe，不然可能会提示文件被占用，导致更新失败
-    util.kill_process_by_name("ZYing.exe")
+    system.kill_process_by_name("ZYing.exe")
 
     if not download_file_with_progress(update_url, UPDATE_ZIP_NAME):
         return
@@ -174,11 +168,11 @@ def upgrade():
         return
 
     print("校验通过，准备应用更新...")
-    apply_update(UPDATE_ZIP_NAME, util.get_exe_dir())
+    apply_update(UPDATE_ZIP_NAME, system.get_exe_dir())
 
 
 if __name__ == "__main__":
-    util.ensure_start_by_self()
+    app.ensure_start_by_self()
 
     try:
         upgrade()
@@ -186,4 +180,4 @@ if __name__ == "__main__":
         print(f"发生未知错误: {e}")
 
     # 如果更新流程没有通过 sys.exit() 退出，则会执行到这里
-    util.press_any_key_exit()
+    app.press_any_key_exit()
