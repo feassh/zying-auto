@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 import subprocess
 import sys
@@ -9,6 +8,7 @@ from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QUrl
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
 
+import process
 import util
 import config
 from ui_main_window import Ui_mainWindow
@@ -30,6 +30,7 @@ class AsyncWorker(QThread):
     async def async_task(self):
         return util.net.check_need_update()
 
+
 class MyApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -39,17 +40,16 @@ class MyApp(QMainWindow):
         self.window().setWindowTitle(self.window().windowTitle() + " - " + util.app.get_version())
         self.window().setFixedSize(self.window().size().width(), self.window().size().height())
 
-        self.process = None
-        self.running = False
+        self.process_window = None
 
         config_data = config.get_config(throw_exception=False)
         self.ui.leExePath.setText(config_data.get("exePath", ""))
         self.ui.leUser.setText(config_data.get("user", ""))
         self.ui.lePwd.setText(config_data.get("pwd", ""))
         self.ui.sbMinDateInterval.setValue(config_data.get("minDateInterval", 10))
-        self.ui.sbMaxDateInterval.setValue(config_data.get("maxDateInterval", 30)) ##########
+        self.ui.sbMaxDateInterval.setValue(config_data.get("maxDateInterval", 30))  ##########
         self.ui.sbMatchCount.setValue(config_data.get("matchCount", 5))
-        self.ui.sbFetchDelay.setValue(config_data.get("fetchDelay", 0)) ###########
+        self.ui.sbFetchDelay.setValue(config_data.get("fetchDelay", 0))  ###########
         self.ui.sbConcurrency.setValue(config_data.get("concurrency", 5))
         self.ui.sbRetries.setValue(config_data.get("retries", 3))
         self.ui.sbRetryDelay.setValue(config_data.get("retryDelay", 3))
@@ -70,7 +70,7 @@ class MyApp(QMainWindow):
         # 初始化并启动异步线程
         self.worker = AsyncWorker()
         self.worker.result_signal.connect(self.update_app)  # 连接信号到槽
-        self.worker.start()  # 启动线程
+        self.worker.start()
 
     def pb_exe_path(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "选择文件", "", "可执行文件 (*.exe);;所有文件 (*)")
@@ -78,21 +78,6 @@ class MyApp(QMainWindow):
             self.ui.leExePath.setText(file_path)
 
     def pb_start(self):
-        if self.running:
-            self.ui.pbStart.setText("🟡启动自动化🟡")
-            self.running = False
-
-            if self.process is not None:
-                try:
-                    self.process.kill()
-                except Exception as e:
-                    print(e)
-                finally:
-                    self.process = None
-
-            QMessageBox.information(self, "提示", "自动化已停止")
-            return
-
         exe_path = self.ui.leExePath.text()
         user = self.ui.leUser.text()
         pwd = self.ui.lePwd.text()
@@ -101,7 +86,7 @@ class MyApp(QMainWindow):
         match_count = int(self.ui.sbMatchCount.value())
         fetch_delay = int(self.ui.sbFetchDelay.value())
         concurrency = int(self.ui.sbConcurrency.value())
-        current_page = int(self.ui.sbCurrentPage.value()) # 该字段只存储，不读取
+        current_page = int(self.ui.sbCurrentPage.value())  # 该字段只存储，不读取
         retries = int(self.ui.sbRetries.value())
         retry_delay = int(self.ui.sbRetryDelay.value())
         timeout = int(self.ui.sbTimeout.value())
@@ -112,7 +97,7 @@ class MyApp(QMainWindow):
             QMessageBox.warning(self, "提示", "请先配置 智赢软件 的相关信息！")
             return
 
-        config_data = json.dumps({
+        config_data = {
             "exePath": exe_path,
             "user": user,
             "pwd": pwd,
@@ -127,16 +112,24 @@ class MyApp(QMainWindow):
             "timeout": timeout,
             "excelPath": excel_path,
             "debug": debug
-        })
+        }
 
         e = config.save_config(config_data)
         if isinstance(e, Exception):
             QMessageBox.critical(self, "提示", f"启动失败！配置信息保存失败！\n{e}")
             return
 
-        self.ui.pbStart.setText("🟢停止自动化🟢")
-        self.running = True
-        self.process = subprocess.Popen([os.path.join(util.system.get_exe_dir(), "main.exe"), "run"])
+        self.process_window = process.ProcessWindow()
+        self.process_window.process_window_closed.connect(self.on_process_window_closed)
+        self.process_window.show()
+        self.process_window.move_to_bottom_right()
+        self.process_window.raise_()
+
+        self.hide()
+
+    def on_process_window_closed(self):
+        self.show()
+        self.process_window = None
 
     def pb_excel_path(self):
         directory_path = QFileDialog.getExistingDirectory(self, "选择文件夹")
@@ -171,16 +164,14 @@ class MyApp(QMainWindow):
             QTimer.singleShot(0, QApplication.quit)
 
     def closeEvent(self, event):
-        # 窗口关闭前终止子进程
-        if self.process is not None:
-            try:
-                self.process.kill()
-            except Exception as e:
-                print(e)
-
         event.accept()
 
-app = QApplication([])
-window = MyApp()
-window.show()
-sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    app = QApplication([])
+    # app.setQuitOnLastWindowClosed(False)
+
+    window = MyApp()
+    window.show()
+
+    sys.exit(app.exec_())

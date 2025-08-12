@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from util import system
 
@@ -33,11 +33,14 @@ def get_config(throw_exception=True) -> dict[str, Any]:
             return {}
 
 
-def save_config(config_data) -> Union[None, Exception]:
+def save_config(config_data) -> Optional[Exception]:
+    global global_config
+
     try:
         with open(get_config_path(), "w", encoding="utf-8") as f:
-            f.write(config_data)
+            f.write(json.dumps(config_data))
 
+        global_config = config_data
         return None
     except Exception as e:
         return e

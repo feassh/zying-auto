@@ -4,13 +4,31 @@ import platform
 
 import sys
 import time
-from typing import Literal
+from ctypes import wintypes
+from typing import Literal, Optional
 
 import psutil
 import pyautogui
 from rich.console import Console
+from win10toast import ToastNotifier
 
 console = Console()
+toaster = ToastNotifier()
+
+# 任务栏相关常量
+ABM_GETTASKBARPOS = 5
+
+
+# 任务栏数据结构
+class APPBARDATA(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("hWnd", wintypes.HWND),
+        ("uCallbackMessage", wintypes.UINT),
+        ("uEdge", wintypes.UINT),
+        ("rc", wintypes.RECT),
+        ("lParam", wintypes.LPARAM)
+    ]
 
 
 def get_exe_dir():
@@ -78,10 +96,10 @@ def get_scaling_factor():
 
 
 def print_inline(
-    text: str,
-    color: str = "white",
-    style: Literal["bold", "italic", "underline", "none"] = "none",
-    newline: bool = True
+        text: str,
+        color: str = "white",
+        style: Literal["bold", "italic", "underline", "none"] = "none",
+        newline: bool = True
 ):
     """彩色文本 + 可覆盖当前行的控制台输出"""
     style_prefix = f"{style} {color}" if style != "none" else color
@@ -114,3 +132,29 @@ def safe_right_click(x, y, duration=0.05):
     finally:
         block_input(False)
         time.sleep(0.05)
+
+
+# 获取任务栏位置
+def get_windows_app_bar_height():
+    appbar = APPBARDATA()
+    appbar.cbSize = ctypes.sizeof(APPBARDATA)
+    res = ctypes.windll.shell32.SHAppBarMessage(ABM_GETTASKBARPOS, ctypes.byref(appbar))
+
+    if not res:
+        return 0
+
+    rect = appbar.rc
+    width = rect.right - rect.left
+    height = rect.bottom - rect.top
+
+    # 0=左, 1=上, 2=右, 3=下
+    position_type = appbar.uEdge
+
+    return height if position_type in [1, 3] else 0
+
+
+def show_toast(content: Optional[str]):
+    if not content:
+        return
+
+    toaster.show_toast("ZYing Auto", content, duration=0)

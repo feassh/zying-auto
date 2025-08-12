@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>710</width>
-    <height>461</height>
+    <height>471</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -38,8 +38,16 @@
       <x>0</x>
       <y>0</y>
       <width>711</width>
-      <height>381</height>
+      <height>391</height>
      </rect>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QTabBar::tab {
+   height: 30px;
+}
+QTabBar::tab:hover {
+   background-color: #037dd6;
+}</string>
     </property>
     <property name="currentIndex">
      <number>0</number>
@@ -519,7 +527,7 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>400</y>
+      <y>410</y>
       <width>681</width>
       <height>51</height>
      </rect>
@@ -535,7 +543,7 @@
      <bool>false</bool>
     </property>
     <property name="text">
-     <string>🟡启动自动化🟡</string>
+     <string>🟢启动自动化🟢</string>
     </property>
     <property name="checkable">
      <bool>false</bool>

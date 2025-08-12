@@ -3,12 +3,20 @@ from typing import Optional, Any
 
 import requests
 from requests.adapters import HTTPAdapter
+from requests.cookies import RequestsCookieJar
 from urllib3 import Retry
 
 import config
 from util import app
 
 global_requests_session = None
+
+
+class NoCookieJar(requests.cookies.RequestsCookieJar):
+    def set_cookie(self, *args, **kwargs):
+        pass
+    def update(self, *args, **kwargs):
+        pass
 
 
 def create_session_with_retry() -> requests.Session:
@@ -29,6 +37,9 @@ def create_session_with_retry() -> requests.Session:
 
     session.mount("https://", adapter)
     session.mount("http://", adapter)
+
+    # 禁止自动管理 Cookie
+    session.cookies = NoCookieJar()
 
     return session
 

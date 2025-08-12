@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_mainWindow(object):
     def setupUi(self, mainWindow):
         mainWindow.setObjectName("mainWindow")
-        mainWindow.resize(710, 461)
+        mainWindow.resize(710, 471)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -25,7 +25,13 @@ class Ui_mainWindow(object):
         self.centralwidget = QtWidgets.QWidget(mainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.tabWidget = QtWidgets.QTabWidget(self.centralwidget)
-        self.tabWidget.setGeometry(QtCore.QRect(0, 0, 711, 381))
+        self.tabWidget.setGeometry(QtCore.QRect(0, 0, 711, 391))
+        self.tabWidget.setStyleSheet("QTabBar::tab {\n"
+"   height: 30px;\n"
+"}\n"
+"QTabBar::tab:hover {\n"
+"   background-color: #037dd6;\n"
+"}")
         self.tabWidget.setObjectName("tabWidget")
         self.tab = QtWidgets.QWidget()
         self.tab.setObjectName("tab")
@@ -155,7 +161,7 @@ class Ui_mainWindow(object):
         self.cbDebug.setObjectName("cbDebug")
         self.tabWidget.addTab(self.tab_2, "")
         self.pbStart = QtWidgets.QPushButton(self.centralwidget)
-        self.pbStart.setGeometry(QtCore.QRect(10, 400, 681, 51))
+        self.pbStart.setGeometry(QtCore.QRect(10, 410, 681, 51))
         font = QtGui.QFont()
         font.setPointSize(12)
         font.setBold(True)
@@ -198,4 +204,4 @@ class Ui_mainWindow(object):
         self.groupBox_4.setTitle(_translate("mainWindow", "调试模式"))
         self.cbDebug.setText(_translate("mainWindow", "开启调试模式"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("mainWindow", "其他配置"))
-        self.pbStart.setText(_translate("mainWindow", "🟡启动自动化🟡"))
+        self.pbStart.setText(_translate("mainWindow", "🟢启动自动化🟢"))
