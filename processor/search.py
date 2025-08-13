@@ -33,12 +33,20 @@ def sleep(seconds: float):
 class SearchProcessor:
     def __init__(self, worker: 'AsyncWorker'):
         self._worker = worker
+        self.saved_kw_number = 0
 
     def log(self, content: str, color="black"):
         self._worker.log_signal.emit(f"{content}\n", color)
 
     def progress(self, value: int):
         self._worker.progress_signal.emit(value)
+
+    def update_current_page(self, value: int):
+        self._worker.page_signal.emit(value)
+
+    def update_saved_number(self, value: int):
+        self.saved_kw_number += value
+        self._worker.saved_number_signal.emit(self.saved_kw_number)
 
     def app_login(self) -> Application:
         # 先结束已打开的所有 ZYing.exe 进程
@@ -332,6 +340,7 @@ class SearchProcessor:
     ) -> List[tuple]:
         """处理单个页面的UI交互，获取关键词列表，并并发处理它们。"""
         self.log(f"\n--- 正在获取第 {cur_page + 1}/{total_pages} 页搜索词列表 ---")
+        self.update_current_page(cur_page + 1)
 
         window.set_focus()
         sleep(1)
@@ -457,6 +466,8 @@ class SearchProcessor:
             self.log("** 数据已同步上传到服务器端 **", "green")
         else:
             self.log(f"** 数据上传服务器失败（不影响流程，可忽略）：{ex} **", "orange")
+
+        self.update_saved_number(len(saved_kw))
 
     def start_work(self):
         config.DEBUG = config.get_config()["debug"]

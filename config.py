@@ -15,7 +15,7 @@ def get_config_path():
     return os.path.join(system.get_exe_dir(), "config.json")
 
 
-def get_config(throw_exception=True) -> dict[str, Any]:
+def get_config(throw_exception=False) -> dict[str, Any]:
     global global_config
 
     if global_config is not None:
