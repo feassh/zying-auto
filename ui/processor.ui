@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>521</width>
+    <width>761</width>
     <height>282</height>
    </rect>
   </property>
@@ -19,7 +19,7 @@
      <rect>
       <x>10</x>
       <y>50</y>
-      <width>501</width>
+      <width>421</width>
       <height>20</height>
      </rect>
     </property>
@@ -32,7 +32,7 @@
      <rect>
       <x>10</x>
       <y>80</y>
-      <width>501</width>
+      <width>421</width>
       <height>191</height>
      </rect>
     </property>
@@ -44,7 +44,7 @@
       <rect>
        <x>10</x>
        <y>20</y>
-       <width>481</width>
+       <width>401</width>
        <height>161</height>
       </rect>
      </property>
@@ -56,9 +56,9 @@
    <widget class="QPushButton" name="pbStop">
     <property name="geometry">
      <rect>
-      <x>360</x>
+      <x>300</x>
       <y>10</y>
-      <width>151</width>
+      <width>131</width>
       <height>31</height>
      </rect>
     </property>
@@ -75,11 +75,16 @@
       <height>31</height>
      </rect>
     </property>
+    <property name="styleSheet">
+     <string notr="true">QLCDNumber {
+  color: rgb(0, 170, 255);
+}</string>
+    </property>
     <property name="mode">
      <enum>QLCDNumber::Dec</enum>
     </property>
     <property name="segmentStyle">
-     <enum>QLCDNumber::Filled</enum>
+     <enum>QLCDNumber::Flat</enum>
     </property>
    </widget>
    <widget class="QLabel" name="label">
@@ -98,7 +103,7 @@
    <widget class="QLabel" name="label_2">
     <property name="geometry">
      <rect>
-      <x>160</x>
+      <x>150</x>
       <y>10</y>
       <width>71</width>
       <height>31</height>
@@ -111,14 +116,40 @@
    <widget class="QLCDNumber" name="lcdSavedNumber">
     <property name="geometry">
      <rect>
-      <x>230</x>
+      <x>220</x>
       <y>10</y>
       <width>64</width>
       <height>31</height>
      </rect>
     </property>
+    <property name="styleSheet">
+     <string notr="true">QLCDNumber {
+  color: rgb(0, 170, 0);
+}</string>
+    </property>
+    <property name="segmentStyle">
+     <enum>QLCDNumber::Flat</enum>
+    </property>
     <property name="value" stdset="0">
      <double>0.000000000000000</double>
+    </property>
+   </widget>
+   <widget class="QTextEdit" name="teLogDebug">
+    <property name="geometry">
+     <rect>
+      <x>440</x>
+      <y>0</y>
+      <width>321</width>
+      <height>281</height>
+     </rect>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QTextEdit {
+  background-color: rgb(0, 0, 0);
+}</string>
+    </property>
+    <property name="readOnly">
+     <bool>true</bool>
     </property>
    </widget>
   </widget>

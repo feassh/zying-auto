@@ -121,18 +121,33 @@ def save_kw_to_server(kws) -> Optional[Exception]:
         return None
 
     data = []
-    for kw, img, price_symbol, price, buy_number in kws:
+    data_product = []
+
+    for kw, kw_img, filter_criteria, products in kws:
         data.append({
             "kw": kw,
-            "img": img,
-            "price_symbol": price_symbol,
-            "price": price,
-            "buy_number": buy_number,
+            "img": kw_img,
+            "filter_criteria": filter_criteria,
         })
+
+        for (cate_main, cate_sub, fulfiller_type), (asin, img, title, price_symbol, price, buy_number) in products:
+            data_product.append({
+                "asin": asin,
+                "kw": kw,
+                "price_symbol": price_symbol,
+                "price": price,
+                "buy_number": buy_number,
+                "delivery": fulfiller_type,
+                "title": title,
+                "img": img,
+                "category_main": cate_main,
+                "category_sub": cate_sub
+            })
 
     try:
         resp = post("https://zying.feassh.workers.dev/insertBatch", json_data={
             "data": data,
+            "productData": data_product,
             "token": "feassh-zying-cf-worker-token"
         })
 
@@ -143,4 +158,3 @@ def save_kw_to_server(kws) -> Optional[Exception]:
             return Exception(json.dumps(data))
     except Exception as e:
         return e
-

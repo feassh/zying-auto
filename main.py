@@ -49,7 +49,7 @@ class MyApp(QMainWindow):
         self.ui.leUser.setText(config_data.get("user", ""))
         self.ui.lePwd.setText(config_data.get("pwd", ""))
         self.ui.sbMinDateInterval.setValue(config_data.get("minDateInterval", 10))
-        self.ui.sbMaxDateInterval.setValue(config_data.get("maxDateInterval", 30))  ##########
+        self.ui.sbMaxDateInterval.setValue(config_data.get("maxDateInterval", 30))
         self.ui.sbMatchCount.setValue(config_data.get("matchCount", 5))
         self.ui.sbFetchDelay.setValue(config_data.get("fetchDelay", 0))  ###########
         self.ui.sbConcurrency.setValue(config_data.get("concurrency", 5))
@@ -58,6 +58,13 @@ class MyApp(QMainWindow):
         self.ui.sbTimeout.setValue(config_data.get("timeout", 60))
         self.ui.leExcelPath.setText(config_data.get("excelPath", ""))
         self.ui.cbDebug.setChecked(config_data.get("debug", False))
+        data_source = config_data.get("dataSource", None)
+        if data_source is None:
+            self.ui.rbZying.setChecked(True)
+            self.ui.rbAmz123.setChecked(False)
+        else:
+            self.ui.rbZying.setChecked(data_source == 0)
+            self.ui.rbAmz123.setChecked(data_source != 0)
 
         self.ui.pbExePath.clicked.connect(self.pb_exe_path)
         self.ui.pbStart.clicked.connect(self.pb_start)
@@ -94,6 +101,7 @@ class MyApp(QMainWindow):
         timeout = int(self.ui.sbTimeout.value())
         excel_path = self.ui.leExcelPath.text()
         debug = self.ui.cbDebug.isChecked()
+        data_source = 0 if self.ui.rbZying.isChecked() else 1
 
         if not exe_path or not user or not pwd:
             QMessageBox.warning(self, "提示", "请先配置 智赢软件 的相关信息！")
@@ -113,12 +121,24 @@ class MyApp(QMainWindow):
             "retryDelay": retry_delay,
             "timeout": timeout,
             "excelPath": excel_path,
-            "debug": debug
+            "debug": debug,
+            "dataSource": data_source,
         }
 
         e = config.save_config(config_data)
         if isinstance(e, Exception):
             QMessageBox.critical(self, "提示", f"启动失败！配置信息保存失败！\n{e}")
+            return
+
+        msg_box = QMessageBox()
+        msg_box.setWindowTitle("提示")
+        msg_box.setText(f"本次将使用 【{'智赢跨境' if data_source == 0 else 'amz123.com'}】 数据源进行搜索词筛选，是否继续？")
+        msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        msg_box.setDefaultButton(QMessageBox.Ok)
+        msg_box.button(QMessageBox.Ok).setText("继续")
+        msg_box.button(QMessageBox.Cancel).setText("选错了，取消")
+        result = msg_box.exec_()
+        if result != QMessageBox.Ok:
             return
 
         self.process_window = process.ProcessWindow()

@@ -11,9 +11,9 @@ import pyperclip
 import requests
 import win32gui
 from bs4 import BeautifulSoup
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Font
+from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 from pywinauto import WindowSpecification
 from pywinauto.application import Application
@@ -37,6 +37,9 @@ class SearchProcessor:
 
     def log(self, content: str, color="black"):
         self._worker.log_signal.emit(f"{content}\n", color)
+
+    def log_debug(self, content: str, color="white"):
+        self._worker.log_debug_signal.emit(f"{content}\n\n", color)
 
     def progress(self, value: int):
         self._worker.progress_signal.emit(value)
@@ -207,6 +210,72 @@ class SearchProcessor:
             # 从浏览器开发者工具中拿到的 Cookie 数据，有效期一年
             return "ubid-acbjp=355-5685452-2837352; session-id=357-7564356-4927846"
 
+    def get_product_fulfiller_type(self, soup: BeautifulSoup) -> Optional[int]:
+        delivery_1_el = soup.select_one('div#fulfillerInfoFeature_feature_div')
+        delivery_2_el = soup.select_one('div#DELIVERY_JP')
+
+        if delivery_1_el or delivery_2_el:
+            if delivery_1_el:
+                delivery_1_content = delivery_1_el.get_text()
+                if "Amazon" in delivery_1_content:
+                    # FBA
+                    return 0
+
+            if delivery_2_el:
+                delivery_2_content = delivery_2_el.get_text()
+                if "Amazon" in delivery_2_content:
+                    # FBA
+                    return 0
+
+            # FBM
+            return 1
+        else:
+            # 未知配送方式
+            return None
+
+    def process_product_detail(self, product: tuple, kw: str, cookies: str) -> Optional[tuple[tuple, tuple]]:
+        asin, *_ = product
+
+        try:
+            res = util.net.get(
+                f"https://www.amazon.co.jp/dp/{asin}?language=zh_CN",
+                headers={
+                    "User-Agent": config.user_agent,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                    "Accept-Encoding": "gzip, deflate, br, zstd",
+                    "Cookie": cookies,
+                }
+            )
+
+            soup = BeautifulSoup(res.text, "html.parser")
+            fulfiller_type = self.get_product_fulfiller_type(soup)
+            unknown_category = "未知分类"
+
+            # 获取分类
+            breadcrumbs_element = soup.select_one("div#wayfinding-breadcrumbs_feature_div")
+            if not breadcrumbs_element:
+                self.log_debug(f"搜索词 {kw} 的商品：{asin} 分类数据未获取到", "orange")
+                return (unknown_category, "", fulfiller_type), product
+
+            category_elements = breadcrumbs_element.select("a.a-link-normal.a-color-tertiary")
+            categories = []
+            for category_el in category_elements:
+                cate = category_el.get_text().strip()
+                if len(cate) == 0:
+                    continue
+
+                categories.append(cate)
+
+            if len(categories) == 0:
+                self.log_debug(f"搜索词 {kw} 的商品：{asin} 分类数据为空")
+                return (unknown_category, "", fulfiller_type), product
+
+            return (categories[0], '›'.join(map(str, categories[1:])), fulfiller_type), product
+        except Exception as e:
+            self.log_debug(f"搜索词 {kw} 的商品：{asin} 详情页获取失败：{e}", "red")
+            return None
+
     def process_keyword(self, kw: str, cookies: str) -> Optional[tuple]:
         """为单个关键词从亚马逊获取并解析数据。"""
         try:
@@ -225,18 +294,23 @@ class SearchProcessor:
 
             # 检查是否被亚马逊风控
             if "ご迷惑をおかけしています" in soup.title.string:
-                self.log("遇到亚马逊风控，操作终止", "red")
+                self.log("** 遇到亚马逊风控，操作终止 **", "red")
                 return None
 
             if "Amazon.co.jp" not in soup.title.string:
                 self.log("注意，获取的网页结果可能存在问题", "orange")
 
-            delivery_messages = soup.select("div.udm-primary-delivery-message span.a-text-bold")
-
-            count = 0
+            # elements = soup.select('div[cel_widget_id*="MAIN-SEARCH_RESULTS-"]')
+            elements = soup.select('div[data-component-type="s-search-result"]')
+            valuable_els = []
             today = date.today()
-            for el in delivery_messages:
-                match = re.search(r'(\d{1,2})月(\d{1,2})日', el.get_text())
+
+            for el in elements:
+                delivery_message = el.select_one("div.udm-primary-delivery-message span.a-text-bold")
+                if not delivery_message:
+                    continue
+
+                match = re.search(r'(\d{1,2})月(\d{1,2})日', delivery_message.get_text())
                 if not match:
                     continue
 
@@ -244,55 +318,56 @@ class SearchProcessor:
 
                 try:
                     target_date = date(today.year, month, day)
-                    if (target_date - today).days >= config.get_config()['minDateInterval']:
-                        count += 1
+                    offset = (target_date - today).days
+                    if config.get_config()['minDateInterval'] <= offset <= config.get_config()['maxDateInterval']:
+                        valuable_els.append(el)
                 except ValueError:
                     continue  # 忽略无效日期，如2月30日
 
-            if count < config.get_config()['matchCount']:
+            if len(valuable_els) < config.get_config()['matchCount']:
                 return None
 
-            img = None
-            price_symbol = None
-            price = None
-            buy_number = None
+            kw_img = None
+            products = []
 
-            elements = soup.select('div[cel_widget_id*="MAIN-SEARCH_RESULTS-"]')
-            for element in elements:
-                if img is not None and price_symbol is not None and price is not None and buy_number is not None:
-                    break
+            for ve in valuable_els:
+                img = None
+                title = ''
+                price_symbol = None
+                price = None
+                buy_number = None
 
-                if element.select('div.udm-primary-delivery-message span.a-text-bold') is None:
-                    continue
-
-                if img is None:
-                    img_el = element.find('img', class_='s-image')
+                product_asin = ve['data-asin'] if 'data-asin' in ve.attrs else None
+                if product_asin and len(product_asin.strip()) > 0:
+                    img_el = ve.find('img', class_='s-image')
                     img_result = img_el['src'] if img_el and 'src' in img_el.attrs else None
                     if img_result is not None and img_result.strip().startswith('http'):
                         img = img_result
 
-                if price_symbol is None or price is None:
-                    price_el = element.select_one('a[aria-describedby="price-link"]')
+                    title_el = ve.select_one('div[data-cy="title-recipe"]')
+                    if title_el:
+                        h2_el = title_el.find('h2')
+                        if h2_el:
+                            title = h2_el.get_text().strip()
+
+                    price_el = ve.select_one('a[aria-describedby="price-link"]')
                     if price_el:
-                        if price_symbol is None:
-                            p_symbol_el = price_el.find('span', class_='a-price-symbol')
-                            p_symbol = p_symbol_el.get_text().strip() if p_symbol_el else ''
-                            if len(p_symbol) > 0:
-                                price_symbol = p_symbol
+                        p_symbol_el = price_el.find('span', class_='a-price-symbol')
+                        p_symbol = p_symbol_el.get_text().strip() if p_symbol_el else ''
+                        if len(p_symbol) > 0:
+                            price_symbol = p_symbol
 
-                        if price is None:
-                            p_whole_el = price_el.find('span', class_='a-price-whole')
-                            if p_whole_el:
-                                p_whole = p_whole_el.get_text().strip()
-                                p_decimal_el = p_whole_el.find('span', class_='a-price-decimal')
-                                p_decimal = p_decimal_el.text.strip() if p_decimal_el else ''
-                                try:
-                                    price = int(p_whole.replace(',', '').replace(p_decimal, ''))
-                                except Exception:
-                                    pass
+                        p_whole_el = price_el.find('span', class_='a-price-whole')
+                        if p_whole_el:
+                            p_whole = p_whole_el.get_text().strip()
+                            p_decimal_el = p_whole_el.find('span', class_='a-price-decimal')
+                            p_decimal = p_decimal_el.text.strip() if p_decimal_el else ''
+                            try:
+                                price = int(p_whole.replace(',', '').replace(p_decimal, ''))
+                            except Exception:
+                                pass
 
-                if buy_number is None:
-                    buy_number_el = element.select_one('div[data-cy="reviews-block"]')
+                    buy_number_el = ve.select_one('div[data-cy="reviews-block"]')
                     if buy_number_el:
                         b_number_el = buy_number_el.select_one('span.a-size-base.a-color-secondary')
                         b_number_full = b_number_el.get_text().strip() if b_number_el else ''
@@ -321,13 +396,53 @@ class SearchProcessor:
                             except Exception:
                                 pass
 
-            return kw.strip(), img, price_symbol, price, buy_number
+                    products.append((product_asin.strip(), img, title, price_symbol, price, buy_number))
+                else:
+                    self.log_debug(f"搜索词 {kw} 未找到对应商品的 asin 数据", "orange")
+
+                # 如果搜索词需要的图片获取到了，就不用执行下面的代码了
+                if kw_img is not None:
+                    continue
+
+                img_el = ve.find('img', class_='s-image')
+                img_result = img_el['src'] if img_el and 'src' in img_el.attrs else None
+                if img_result is not None and img_result.strip().startswith('http'):
+                    kw_img = img_result
+
+            concurrency = config.get_config()['concurrency']
+            self.log_debug(f"获取到 {len(products)} 个符合筛选条件的商品，正在使用 {concurrency} 个并发线程进行处理...")
+
+            saved_products = []
+
+            with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                future_to_product = {executor.submit(self.process_product_detail, product, kw, cookies): product for
+                                     product in products}
+                for future in as_completed(future_to_product):
+                    if self._worker.is_stopping():
+                        self.log_debug("收到停止信号，正在终止任务...", "orange")
+                        executor.shutdown(wait=True, cancel_futures=True)
+                        break
+
+                    result = future.result()
+                    if result:
+                        saved_products.append(result)
+
+                        (cate_main, cate_sub, _), _ = result
+                        self.log_debug(f"搜索词 {kw} 对应的的商品主分类：{cate_main}，次分类：{cate_sub}", "cyan")
+
+            self.log_debug(f"搜索词 {kw.strip()} 获取到了 {len(saved_products)} 个商品和对应的商品数据",
+                           "green" if len(saved_products) > 0 else "orange")
+
+            filter_criteria = f"{config.get_config()['minDateInterval']}-{config.get_config()['maxDateInterval']}-{config.get_config()['matchCount']}"
+
+            self.log_debug(f"符合条件搜索词：{kw.strip()}\n图片：{kw_img}", color="green")
+            return kw.strip(), kw_img, filter_criteria, saved_products
         except requests.exceptions.RequestException as e:
             # 重试机制会处理此问题，但如果所有重试都失败，最好记录下来。
-            self.log(f"关键词 '{kw}' 请求失败: {e}", "red")
+            self.log_debug(f"关键词 '{kw}' 请求失败: {e}", "red")
             return None
         except Exception as e:
-            self.log(f"处理关键词 '{kw}' 时出错: {e}", "red")
+            self.log_debug(f"处理关键词 '{kw}' 时出错: {e}", "red")
             return None
 
     def process_page_concurrently(
@@ -420,18 +535,55 @@ class SearchProcessor:
 
         self.log(f"正在为 {len(saved_kw)} 个搜索词生成Excel文件...", "orange")
 
-        wb = Workbook()
-        ws = wb.active
+        # 目标目录
+        output_dir = Path(config.get_config().get('excelPath') or Path(util.system.get_exe_dir()) / "excel")
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-        ws.title = "亚马逊关键词"
-        ws['A1'] = "亚马逊 [日本] 区域关键词"
-        ws['A1'].font = Font(bold=True, size=14)
+        # 文件名（按小时分）
+        filename = datetime.now().strftime("%m-%d_%H") + ".xlsx"
+        file_path = output_dir / filename
 
-        headers = ["关键词", "图片"]
-        for col, header in enumerate(headers, 1):
-            ws.cell(row=2, column=col, value=header).font = Font(bold=True)
+        is_new_file = not file_path.exists()
 
-        for i, (text, img_url, *_) in enumerate(saved_kw, start=3):
+        # 打开或新建
+        if file_path.exists():
+            wb = load_workbook(file_path)
+            # if f"第{cur_page + 1}页" in wb.sheetnames:
+            if "亚马逊关键词" in wb.sheetnames:
+                # ws = wb[f"第{cur_page + 1}页"]
+                ws = wb["亚马逊关键词"]
+            else:
+                ws = wb.create_sheet("亚马逊关键词")
+                # ws = wb.create_sheet(f"第{cur_page + 1}页")
+                # ws['A1'] = "亚马逊 [日本] 区域关键词"
+                # ws['A1'].font = Font(bold=True, size=20)
+                # headers = ["关键词", "图片"]
+                # for col, header in enumerate(headers, 1):
+                #     ws.cell(row=2, column=col, value=header).font = Font(bold=True)
+        else:
+            wb = Workbook()
+            ws = wb.active
+            # ws.title = f"第{cur_page + 1}页"
+            ws.title = "亚马逊关键词"
+            ws['A1'] = "亚马逊 [日本] 区域关键词"
+            ws['A1'].font = Font(bold=True, size=20)
+            headers = ["关键词", "图片"]
+            for col, header in enumerate(headers, 1):
+                ws.cell(row=2, column=col, value=header).font = Font(bold=True)
+
+        # 找到追加的起始行
+        start_row = ws.max_row + 1
+
+        # 页码行
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=2)
+        cell = ws.cell(row=start_row, column=1)
+        cell.value = f"==== 第 {cur_page + 1} 页 ===="
+        cell.font = Font(bold=True, size=20)
+
+        # 数据起始行
+        start_row += 1
+
+        for i, (text, img_url, *_) in enumerate(saved_kw, start=start_row):
             cell = ws.cell(row=i, column=1, value=text)
             cell.hyperlink = f"https://www.amazon.co.jp/s?k={text}"
             cell.style = "Hyperlink"
@@ -446,32 +598,29 @@ class SearchProcessor:
                 except Exception as e:
                     self.log(f"搜索词 {text} 的图片下载失败，已忽略: {img_url}\n{e}", "red")
 
-        max_len = max(len(text) for text, *_ in saved_kw)
-        ws.column_dimensions[get_column_letter(1)].width = max_len + 5
-        ws.column_dimensions[get_column_letter(2)].width = 15
+        # 如果是新文件才设置列宽（避免覆盖旧文件调整过的宽度）
+        if is_new_file:
+            max_len = max((len(text) for text, *_ in saved_kw), default=0)
+            ws.column_dimensions[get_column_letter(1)].width = max_len + 5
+            ws.column_dimensions[get_column_letter(2)].width = 15
 
         try:
-            output_dir = Path(config.get_config()['excelPath'] or Path(util.system.get_exe_dir()) / "excel")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + f"-第{cur_page + 1}页.xlsx"
             wb.save(output_dir / filename)
-
             self.log(f"已将数据存储为 Excel 文件：{filename}", "green")
         except Exception as e:
             self.log(f"保存 Excel 文件失败: {e}", "red")
 
         # 数据上传到服务器
+        self.log("正在将数据上传到服务器端...", "orange")
         ex = util.net.save_kw_to_server(saved_kw)
         if ex is None:
             self.log("** 数据已同步上传到服务器端 **", "green")
         else:
-            self.log(f"** 数据上传服务器失败（不影响流程，可忽略）：{ex} **", "orange")
+            self.log(f"** 数据上传服务器失败：{ex} **", "red")
 
         self.update_saved_number(len(saved_kw))
 
     def start_work(self):
-        config.DEBUG = config.get_config()["debug"]
-
         # 根据配置决定是启动新应用还是连接现有应用
         config_current_page = config.get_config()['currentPage']
         if config_current_page <= 0:

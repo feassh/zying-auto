@@ -521,6 +521,51 @@ QTabBar::tab:hover {
        </property>
       </widget>
      </widget>
+     <widget class="QGroupBox" name="groupBox_5">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>80</y>
+        <width>681</width>
+        <height>51</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>数据源</string>
+      </property>
+      <widget class="QRadioButton" name="rbZying">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>20</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>智赢跨境</string>
+       </property>
+       <property name="checkable">
+        <bool>true</bool>
+       </property>
+       <property name="checked">
+        <bool>false</bool>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123">
+       <property name="geometry">
+        <rect>
+         <x>110</x>
+         <y>20</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>amz123.com</string>
+       </property>
+      </widget>
+     </widget>
     </widget>
    </widget>
    <widget class="QPushButton" name="pbStart">

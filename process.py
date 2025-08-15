@@ -1,7 +1,8 @@
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QTextCursor, QTextCharFormat, QColor
-from PyQt5.QtWidgets import QMainWindow
+from PyQt5.QtWidgets import QMainWindow, QTextEdit
 
+import config
 from processor.search import SearchProcessor
 from ui_processor_window import Ui_processorWindow
 
@@ -9,6 +10,7 @@ from ui_processor_window import Ui_processorWindow
 class AsyncWorker(QThread):
     # 定义信号，用于将异步任务的结果传递回主线程
     log_signal = pyqtSignal(str, str)
+    log_debug_signal = pyqtSignal(str, str)
     progress_signal = pyqtSignal(int)
     page_signal = pyqtSignal(int)
     saved_number_signal = pyqtSignal(int)
@@ -38,15 +40,22 @@ class ProcessWindow(QMainWindow):
         self.ui = Ui_processorWindow()
         self.ui.setupUi(self)
 
-        self.setFixedSize(self.size().width(), self.size().height())
-
         # 添加一个标志，防止重复处理关闭事件
         self._is_closing = False
+
+        config.DEBUG = config.get_config()["debug"]
+
+        self.setFixedSize(self.width(), self.height())
+        # if config.DEBUG:
+        #     self.setFixedSize(self.width(), self.height())
+        # else:
+        #     self.setFixedSize(self.width() - self.ui.teLogDebug.width(), self.height())
 
         self.ui.pbStop.clicked.connect(self.stop_worker)
 
         self.worker = AsyncWorker()
-        self.worker.log_signal.connect(self.append_colored_text)
+        self.worker.log_signal.connect(self.append_normal_colored_text)
+        self.worker.log_debug_signal.connect(self.append_debug_colored_text)
         self.worker.progress_signal.connect(self.update_progress)
         self.worker.page_signal.connect(self.update_page)
         self.worker.saved_number_signal.connect(self.update_saved_number)
@@ -59,7 +68,7 @@ class ProcessWindow(QMainWindow):
 
         if self.worker and self.worker.isRunning():
             self.worker.request_stop()
-            self.append_colored_text("\n\n停止请求已发送，请等待当前任务完成...\n", "orange")
+            self.append_normal_colored_text("\n\n停止请求已发送，请等待当前任务完成...\n", "orange")
         else:
             self.ui.pbStop.setText("已停止")
 
@@ -72,9 +81,15 @@ class ProcessWindow(QMainWindow):
     def update_saved_number(self, saved_number):
         self.ui.lcdSavedNumber.display(saved_number)
 
-    def append_colored_text(self, text, color):
+    # =========== 需要判断指定行数后 自动清空 =============
+    def append_colored_text(self, text, color, text_edit: QTextEdit):
+        # 检查总行数
+        if text_edit.document().blockCount() > 500:
+            # 清空全部（如果只想删除多余的行，可以改成 splitlines 再拼回去）
+            text_edit.clear()
+
         # 移动光标到文本末尾
-        cursor = self.ui.teLog.textCursor()
+        cursor = text_edit.textCursor()
         cursor.movePosition(QTextCursor.End)
 
         # 设置文本格式（颜色）
@@ -85,8 +100,17 @@ class ProcessWindow(QMainWindow):
         cursor.insertText(text, fmt)
 
         # 滚动到光标处（末尾）
-        self.ui.teLog.setTextCursor(cursor)
-        self.ui.teLog.ensureCursorVisible()
+        text_edit.setTextCursor(cursor)
+        text_edit.ensureCursorVisible()
+
+    def append_normal_colored_text(self, text, color):
+        self.append_colored_text(text, color, self.ui.teLog)
+
+    def append_debug_colored_text(self, text, color):
+        # if not config.DEBUG:
+        #     return
+
+        self.append_colored_text(text, color, self.ui.teLogDebug)
 
     def on_worker_finished(self):
         self.worker = None
@@ -108,7 +132,7 @@ class ProcessWindow(QMainWindow):
                 self.worker.request_stop()
 
                 # 3. 在 UI 上通知用户
-                self.append_colored_text("\n\n关闭请求已发送，请等待当前任务完成...\n", "orange")
+                self.append_normal_colored_text("\n\n关闭请求已发送，请等待当前任务完成...\n", "orange")
                 self.setWindowTitle("正在退出...")
 
             # 4. 忽略当前的关闭事件，等待线程自己结束
