@@ -168,8 +168,8 @@ def get_amz123_kw_list(page) -> tuple[Optional[tuple[list, int]], Optional[Excep
             json_data={
                 "word": "",
                 "country": "jp",
-                "ranking_this_week": [],
-                "fluctuation_range": [],
+                "ranking_this_week": [50001],
+                "fluctuation_range": [1001],
                 "word_len_range": [],
                 "click_range": [],
                 "conversion_range": [],
