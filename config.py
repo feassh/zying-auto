@@ -44,3 +44,7 @@ def save_config(config_data) -> Optional[Exception]:
         return None
     except Exception as e:
         return e
+
+
+def is_zying_data_source():
+    return get_config().get("dataSource", 0) == 0

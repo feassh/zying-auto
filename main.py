@@ -144,7 +144,9 @@ class MyApp(QMainWindow):
         self.process_window = process.ProcessWindow()
         self.process_window.process_window_closed.connect(self.on_process_window_closed)
         self.process_window.show()
-        self.process_window.move_to_bottom_right()
+
+        if config.is_zying_data_source():
+            self.process_window.move_to_bottom_right()
         self.process_window.raise_()
 
         self.hide()

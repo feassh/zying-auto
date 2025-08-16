@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Any
 
 import pyperclip
 import requests
@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Font, Alignment
+from openpyxl.styles.builtins import total
 from openpyxl.utils import get_column_letter
 from pywinauto import WindowSpecification
 from pywinauto.application import Application
@@ -447,8 +448,8 @@ class SearchProcessor:
 
     def process_page_concurrently(
             self,
-            window,
-            page_rect,
+            window: Optional[WindowSpecification],
+            page_rect: Optional[Any],
             cur_page: int,
             total_pages: int,
             cookies: str,
@@ -457,37 +458,43 @@ class SearchProcessor:
         self.log(f"\n--- 正在获取第 {cur_page + 1}/{total_pages} 页搜索词列表 ---")
         self.update_current_page(cur_page + 1)
 
-        window.set_focus()
-        sleep(1)
+        kw_list = None
 
-        # 点击一下空白区域，让页码按钮从 hover 状态退出，防止接下来 OpenCV 轮廓识别错误
-        util.system.safe_click(x=541, y=647)
-        sleep(1)
+        if config.is_zying_data_source():
+            window.set_focus()
+            sleep(1)
 
-        # 导航到正确的页面
-        if cur_page == 0:
-            util.system.safe_click(x=155, y=600)
+            # 点击一下空白区域，让页码按钮从 hover 状态退出，防止接下来 OpenCV 轮廓识别错误
+            util.system.safe_click(x=541, y=647)
+            sleep(1)
+
+            # 导航到正确的页面
+            if cur_page == 0:
+                util.system.safe_click(x=155, y=600)
+            else:
+                while True:
+                    point = util.cv.get_next_page_point(page_rect)
+                    if point:
+                        util.system.safe_click(x=point[0], y=point[1])
+                        break
+                    else:
+                        sleep(1)
+
+            util.app.check_load_finished()
+
+            # 复制关键词到剪贴板
+            pyperclip.copy("")
+            util.system.safe_right_click(x=233, y=464)
+            sleep(0.5)
+            util.system.safe_click(x=287, y=504)
+            sleep(0.5)
+
+            kw_list = [kw for kw in pyperclip.paste().splitlines() if kw]
         else:
-            while True:
-                point = util.cv.get_next_page_point(page_rect)
-                if point:
-                    util.system.safe_click(x=point[0], y=point[1])
-                    break
-                else:
-                    sleep(1)
+            list_data, _, _ = self.get_data_by_amz123(cur_page + 1)
+            kw_list = [kw['word'] for kw in list_data if kw.get('word')]
 
-        util.app.check_load_finished()
-
-        # 复制关键词到剪贴板
-        pyperclip.copy("")
-        util.system.safe_right_click(x=233, y=464)
-        sleep(0.5)
-        util.system.safe_click(x=287, y=504)
-        sleep(0.5)
-
-        kw_list = [kw for kw in pyperclip.paste().splitlines() if kw]
-
-        if not kw_list:
+        if not kw_list or len(kw_list) == 0:
             self.log("此页未找到关键词。", "orange")
             return []
 
@@ -620,7 +627,7 @@ class SearchProcessor:
 
         self.update_saved_number(len(saved_kw))
 
-    def start_work(self):
+    def get_data_by_zying(self) -> tuple[list, tuple[int, int], Optional[WindowSpecification]]:
         # 根据配置决定是启动新应用还是连接现有应用
         config_current_page = config.get_config()['currentPage']
         if config_current_page <= 0:
@@ -628,29 +635,55 @@ class SearchProcessor:
 
         main_window = self.navigate_to_target_page(config_current_page <= 0)
 
-        total_item, total_page = self.get_total_kw_page_and_item(main_window)
+        return [], self.get_total_kw_page_and_item(main_window), main_window
 
-        if total_item <= 0:
-            self.log("搜索词分页数据获取失败！程序已终止运行。", "red")
-        else:
-            self.log(f"共获取到 {total_item} 条搜索词数据，一共 {total_page} 页", "green")
+    def get_data_by_amz123(self, page=1) -> tuple[list, tuple[int, int], Optional[WindowSpecification]]:
+        data, e = util.net.get_amz123_kw_list(page)
+        if not data:
+            self.log(f"从 【amz123】 获取数据失败：{e}", "red")
+            return [], (0, 0), None
 
-        amazon_cookies = self.get_amazon_cookies()
-        page_rect = main_window.child_window(auto_id="PTurn").rectangle()
-        if config_current_page <= 0: config_current_page = 1
+        kw_list, total = data
 
-        for cur_page in range(config_current_page - 1, total_page):
-            if self._worker.is_stopping():
-                self.log("收到停止信号，正在终止任务...", "orange")
-                break
+        return kw_list, (total, math.ceil(total / 200)), None
 
-            saved_keywords = self.process_page_concurrently(main_window, page_rect, cur_page, total_page,
-                                                            amazon_cookies)
+    def start_work(self):
+        try:
+            if config.is_zying_data_source():
+                self.log("正在从 【智赢跨境】 获取搜索词数据...", "orange")
+                data = self.get_data_by_zying()
+            else:
+                self.log("正在从 【amz123】 获取搜索词数据...", "orange")
+                data = self.get_data_by_amz123()
 
-            if self._worker.is_stopping():
-                self.log("收到停止信号，任务在保存结果前被终止。", "orange")
-                break
+            _, (total_item, total_page), main_window = data
 
-            self.save_results(saved_keywords, cur_page)
+            if total_item <= 0:
+                self.log(f"\n搜索词分页数据获取失败！程序已终止运行。", "red")
+                return
+            else:
+                self.log(f"共获取到 {total_item} 条搜索词数据，一共 {total_page} 页", "green")
 
-        self.log("\n所有任务均已执行完毕！", "green")
+            page_rect = main_window.child_window(auto_id="PTurn").rectangle() if config.is_zying_data_source() else None
+            amazon_cookies = self.get_amazon_cookies()
+
+            config_current_page = config.get_config()['currentPage']
+            if config_current_page <= 0: config_current_page = 1
+
+            for cur_page in range(config_current_page - 1, total_page):
+                if self._worker.is_stopping():
+                    self.log("收到停止信号，正在终止任务...", "orange")
+                    break
+
+                saved_keywords = self.process_page_concurrently(main_window, page_rect, cur_page, total_page,
+                                                                amazon_cookies)
+
+                if self._worker.is_stopping():
+                    self.log("收到停止信号，任务在保存结果前被终止。", "orange")
+                    break
+
+                self.save_results(saved_keywords, cur_page)
+
+            self.log("\n所有任务均已执行完毕！", "green")
+        except Exception as e:
+            self.log(f"\n程序出错，已终止运行！错误：{e}", "red")

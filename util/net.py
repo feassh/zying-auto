@@ -15,6 +15,7 @@ global_requests_session = None
 class NoCookieJar(requests.cookies.RequestsCookieJar):
     def set_cookie(self, *args, **kwargs):
         pass
+
     def update(self, *args, **kwargs):
         pass
 
@@ -158,3 +159,40 @@ def save_kw_to_server(kws) -> Optional[Exception]:
             return Exception(json.dumps(data))
     except Exception as e:
         return e
+
+
+def get_amz123_kw_list(page) -> tuple[Optional[tuple[list, int]], Optional[Exception]]:
+    try:
+        res = post(
+            "https://api.amz123.com/search/v1/hotwords/search",
+            json_data={
+                "word": "",
+                "country": "jp",
+                "ranking_this_week": [],
+                "fluctuation_range": [],
+                "word_len_range": [],
+                "click_range": [],
+                "conversion_range": [],
+                "ne_word": "",
+                "top3_brand": "",
+                "top3_category": "",
+                "fluctuation_use_abs": 1,
+                "page": {
+                    "size": 200,
+                    "num": page,
+                    "sorts": [{"condition": "new_rank", "order": 1}]
+                }
+            }
+        )
+
+        data = res.json()
+        if data.get("status", -1) == 0:
+            data2 = data.get("data")
+            if not data2:
+                return None, Exception(json.dumps(data))
+            else:
+                return (data2.get("rows", []), data2.get("total", 0)), None
+        else:
+            return None, Exception(json.dumps(data))
+    except Exception as e:
+        return None, e
