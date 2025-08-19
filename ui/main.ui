@@ -197,6 +197,12 @@ QTabBar::tab:hover {
          <height>22</height>
         </rect>
        </property>
+       <property name="toolTip">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; color:#00aaff;&quot;&gt;每筛选完一页搜索词后，程序需要等待多长时间才会执行下一页的搜索词筛选任务。默认 0 即可。（单位：秒）&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="toolTipDuration">
+        <number>0</number>
+       </property>
        <property name="maximum">
         <number>999999</number>
        </property>
@@ -222,6 +228,12 @@ QTabBar::tab:hover {
          <width>61</width>
          <height>22</height>
         </rect>
+       </property>
+       <property name="toolTip">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; color:#00aaff;&quot;&gt;程序同时可以执行多少个搜索词筛选任务。&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="toolTipDuration">
+        <number>0</number>
        </property>
        <property name="minimum">
         <number>1</number>
@@ -293,19 +305,6 @@ QTabBar::tab:hover {
        </property>
        <property name="text">
         <string>选择</string>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="pbOpenWebsite">
-       <property name="geometry">
-        <rect>
-         <x>560</x>
-         <y>20</y>
-         <width>111</width>
-         <height>23</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>打开网站查看结果</string>
        </property>
       </widget>
       <widget class="QLabel" name="label_11">
@@ -424,6 +423,12 @@ QTabBar::tab:hover {
          <height>22</height>
         </rect>
        </property>
+       <property name="toolTip">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; color:#00aaff;&quot;&gt;筛选指定搜索词时，对应商品的配送日期距离今天的最小时间差。（单位：天）&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="toolTipDuration">
+        <number>0</number>
+       </property>
        <property name="minimum">
         <number>1</number>
        </property>
@@ -453,6 +458,12 @@ QTabBar::tab:hover {
          <height>22</height>
         </rect>
        </property>
+       <property name="toolTip">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; color:#00aaff;&quot;&gt;筛选指定搜索词时，对应商品的配送日期距离今天的最大时间差。（单位：天）&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="toolTipDuration">
+        <number>0</number>
+       </property>
        <property name="minimum">
         <number>1</number>
        </property>
@@ -481,6 +492,12 @@ QTabBar::tab:hover {
          <width>61</width>
          <height>22</height>
         </rect>
+       </property>
+       <property name="toolTip">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; color:#00aaff;&quot;&gt;筛选指定搜索词时，对应商品的配送日期满足上面两个设定的值的个数。（单位：个）&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="toolTipDuration">
+        <number>0</number>
        </property>
        <property name="minimum">
         <number>1</number>
@@ -563,6 +580,155 @@ QTabBar::tab:hover {
        </property>
        <property name="text">
         <string>amz123.com</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QGroupBox" name="groupBox_6">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>150</y>
+        <width>681</width>
+        <height>81</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>网站相关</string>
+      </property>
+      <widget class="QLabel" name="label_14">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>20</y>
+         <width>151</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>最后一次采集任务的标识符</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="labelTaskID">
+       <property name="geometry">
+        <rect>
+         <x>160</x>
+         <y>20</y>
+         <width>141</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="toolTip">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; color:#00aaff;&quot;&gt;该标识符可以放到网站上进行查询，得到的结果为该次采集任务对应的全部数据。&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="toolTipDuration">
+        <number>0</number>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">background-color: rgb(0, 170, 255);
+color: rgb(255, 255, 255);</string>
+       </property>
+       <property name="text">
+        <string>无</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="pbCopyTaskID">
+       <property name="geometry">
+        <rect>
+         <x>320</x>
+         <y>20</y>
+         <width>75</width>
+         <height>23</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>复制</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="pbOpenWebsite">
+       <property name="geometry">
+        <rect>
+         <x>410</x>
+         <y>20</y>
+         <width>111</width>
+         <height>23</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>打开网站查看结果</string>
+       </property>
+      </widget>
+      <widget class="QCheckBox" name="cbAutoDeleteAllData">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>50</y>
+         <width>341</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: rgb(255, 0, 0)</string>
+       </property>
+       <property name="text">
+        <string>每次执行新的采集任务前自动清空服务器数据库的所有数据</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QGroupBox" name="groupBox_7">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>250</y>
+        <width>681</width>
+        <height>51</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>其它</string>
+      </property>
+      <widget class="QLabel" name="label_15">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>20</y>
+         <width>51</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>当保存了</string>
+       </property>
+      </widget>
+      <widget class="QSpinBox" name="sbMaxSaveNumber">
+       <property name="geometry">
+        <rect>
+         <x>60</x>
+         <y>20</y>
+         <width>61</width>
+         <height>22</height>
+        </rect>
+       </property>
+       <property name="toolTip">
+        <string/>
+       </property>
+       <property name="maximum">
+        <number>999999</number>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_16">
+       <property name="geometry">
+        <rect>
+         <x>130</x>
+         <y>20</y>
+         <width>351</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>个搜索词后，自动结束采集任务。默认为 0，即不限制保存数量。</string>
        </property>
       </widget>
      </widget>

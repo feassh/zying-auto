@@ -123,12 +123,14 @@ def save_kw_to_server(kws) -> Optional[Exception]:
 
     data = []
     data_product = []
+    task_id = int(config.get_config()["lastTaskId"])
 
     for kw, kw_img, filter_criteria, products in kws:
         data.append({
             "kw": kw,
             "img": kw_img,
             "filter_criteria": filter_criteria,
+            "task_id": task_id
         })
 
         for (cate_main, cate_sub, fulfiller_type), (asin, img, title, price_symbol, price, buy_number) in products:
@@ -142,13 +144,29 @@ def save_kw_to_server(kws) -> Optional[Exception]:
                 "title": title,
                 "img": img,
                 "category_main": cate_main,
-                "category_sub": cate_sub
+                "category_sub": cate_sub,
+                "task_id": task_id
             })
 
     try:
         resp = post("https://zying.feassh.workers.dev/insertBatch", json_data={
             "data": data,
             "productData": data_product,
+            "token": "feassh-zying-cf-worker-token"
+        })
+
+        data = resp.json()
+        if data.get("code", -1) == 0:
+            return None
+        else:
+            return Exception(json.dumps(data))
+    except Exception as e:
+        return e
+
+
+def delete_all_server_data() -> Optional[Exception]:
+    try:
+        resp = post("https://zying.feassh.workers.dev/deleteAll", json_data={
             "token": "feassh-zying-cf-worker-token"
         })
 

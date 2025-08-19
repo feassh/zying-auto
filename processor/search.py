@@ -649,6 +649,14 @@ class SearchProcessor:
 
     def start_work(self):
         try:
+            if config.get_config()["autoDeleteAllData"]:
+                self.log("正在删除服务器端的所有数据...", color="orange")
+                e = util.net.delete_all_server_data()
+                if e:
+                    self.log(f"服务器数据删除失败：{e}\n", "red")
+                else:
+                    self.log("服务器数据已清空！\n", "green")
+
             if config.is_zying_data_source():
                 self.log("正在从 【智赢跨境】 获取搜索词数据...", "orange")
                 data = self.get_data_by_zying()
@@ -674,6 +682,12 @@ class SearchProcessor:
                 if self._worker.is_stopping():
                     self.log("收到停止信号，正在终止任务...", "orange")
                     break
+
+                max_save_number = config.get_config()["maxSaveNumber"]
+                if max_save_number > 0:
+                    if self.saved_kw_number >= max_save_number:
+                        self.log("已达到设定的最大保存数量，正在终止任务...", "blue")
+                        break
 
                 saved_keywords = self.process_page_concurrently(main_window, page_rect, cur_page, total_page,
                                                                 amazon_cookies)

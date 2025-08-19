@@ -2,6 +2,10 @@
 # 解决 QWindowsContext: OleInitialize() failed: "COM error 0xffffffff80010106 RPC_E_CHANGED_MODE"
 # COM 初始化模式冲突 导致 QFileDialog（原生系统文件对话框依赖 OLE/COM）崩溃。
 import ctypes
+import time
+
+import pyperclip
+
 ole32 = ctypes.OleDLL('ole32')
 COINIT_APARTMENTTHREADED = 0x2
 hr = ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)
@@ -65,11 +69,18 @@ class MyApp(QMainWindow):
         else:
             self.ui.rbZying.setChecked(data_source == 0)
             self.ui.rbAmz123.setChecked(data_source != 0)
+        last_task_id = config_data.get("lastTaskId", None)
+        if last_task_id is None:
+            self.ui.labelTaskID.setText("无")
+        else:
+            self.ui.labelTaskID.setText(last_task_id)
+        self.ui.cbAutoDeleteAllData.setChecked(config_data.get("autoDeleteAllData", False))
 
         self.ui.pbExePath.clicked.connect(self.pb_exe_path)
         self.ui.pbStart.clicked.connect(self.pb_start)
         self.ui.pbExcelPath.clicked.connect(self.pb_excel_path)
         self.ui.pbOpenWebsite.clicked.connect(self.pb_open_website)
+        self.ui.pbCopyTaskID.clicked.connect(self.pb_copy_task_id)
 
         if not util.system.is_admin():
             QMessageBox.critical(self, "提示", "请使用管理员方式运行本软件")
@@ -86,6 +97,10 @@ class MyApp(QMainWindow):
         if file_path:
             self.ui.leExePath.setText(file_path)
 
+    def pb_copy_task_id(self):
+        pyperclip.copy(config.get_config().get("lastTaskId", ""))
+        QMessageBox.information(self, "提示", "复制成功")
+
     def pb_start(self):
         exe_path = self.ui.leExePath.text()
         user = self.ui.leUser.text()
@@ -95,13 +110,16 @@ class MyApp(QMainWindow):
         match_count = int(self.ui.sbMatchCount.value())
         fetch_delay = int(self.ui.sbFetchDelay.value())
         concurrency = int(self.ui.sbConcurrency.value())
-        current_page = int(self.ui.sbCurrentPage.value())  # 该字段只存储，不读取
+        current_page = int(self.ui.sbCurrentPage.value()) # 该字段只存储，不读取
         retries = int(self.ui.sbRetries.value())
         retry_delay = int(self.ui.sbRetryDelay.value())
         timeout = int(self.ui.sbTimeout.value())
         excel_path = self.ui.leExcelPath.text()
         debug = self.ui.cbDebug.isChecked()
         data_source = 0 if self.ui.rbZying.isChecked() else 1
+        last_task_id = str(int(time.time() * 1000))
+        auto_delete_all_data = self.ui.cbAutoDeleteAllData.isChecked()
+        max_save_number = int(self.ui.sbMaxSaveNumber.value()) # 该字段只存储，不读取
 
         if not exe_path or not user or not pwd:
             QMessageBox.warning(self, "提示", "请先配置 智赢软件 的相关信息！")
@@ -123,6 +141,9 @@ class MyApp(QMainWindow):
             "excelPath": excel_path,
             "debug": debug,
             "dataSource": data_source,
+            "lastTaskId": last_task_id,
+            "autoDeleteAllData": auto_delete_all_data,
+            "maxSaveNumber": max_save_number
         }
 
         e = config.save_config(config_data)
@@ -130,9 +151,11 @@ class MyApp(QMainWindow):
             QMessageBox.critical(self, "提示", f"启动失败！配置信息保存失败！\n{e}")
             return
 
+        self.ui.labelTaskID.setText(last_task_id)
+
         msg_box = QMessageBox()
         msg_box.setWindowTitle("提示")
-        msg_box.setText(f"本次将使用 【{'智赢跨境' if data_source == 0 else 'amz123.com'}】 数据源进行搜索词筛选，是否继续？")
+        msg_box.setText(f"本次将使用 【{'智赢跨境' if data_source == 0 else 'amz123.com'}】 数据源进行搜索词筛选。\n本次采集任务执行前 **{'会' if auto_delete_all_data else '不会'}** 清空服务器的所有数据。\n是否继续？")
         msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         msg_box.setDefaultButton(QMessageBox.Ok)
         msg_box.button(QMessageBox.Ok).setText("继续")
