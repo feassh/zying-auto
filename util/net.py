@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Optional, Any
 
 import requests
@@ -23,6 +24,7 @@ class NoCookieJar(requests.cookies.RequestsCookieJar):
 def create_session_with_retry() -> requests.Session:
     """创建一个带有内置重试机制的 requests.Session 对象。"""
     session = requests.Session()
+    # session.trust_env = False
 
     retry_strategy = Retry(
         # 总重试次数
@@ -42,6 +44,14 @@ def create_session_with_retry() -> requests.Session:
     # 禁止自动管理 Cookie
     session.cookies = NoCookieJar()
 
+    # port = os.getenv("PROXY_PORT", '').strip()
+    #
+    # proxies = {
+    #     "http": f"http://127.0.0.1:{port}",  # 10808, 7897
+    #     "https": f"http://127.0.0.1:{port}",
+    # }
+    # session.proxies = proxies if len(port) > 0 and int(port) > 0 else {}
+
     return session
 
 
@@ -54,6 +64,17 @@ def get_requests_session():
     return global_requests_session
 
 
+def get_proxy_port():
+    port = os.getenv("PROXY_PORT", '').strip()
+
+    proxies = {
+        "http": f"http://127.0.0.1:{port}",  # 10808, 7897
+        "https": f"http://127.0.0.1:{port}",
+    }
+
+    return proxies if len(port) > 0 and int(port) > 0 else {}
+
+
 def get(
         url,
         params=None,
@@ -61,12 +82,13 @@ def get(
         timeout=None,
         stream=None
 ):
-    response = get_requests_session().get(
+    response = requests.get(
         url,
         params=params,
         headers=headers,
         timeout=timeout if timeout else config.get_config().get("timeout", 60),
         stream=stream,
+        proxies=get_proxy_port(),
     )
     response.raise_for_status()
 
@@ -80,12 +102,13 @@ def post(
         timeout=None,
         stream=None
 ):
-    response = get_requests_session().post(
+    response = requests.post(
         url,
         json=json_data,
         headers=headers,
         timeout=timeout if timeout else config.get_config().get("timeout", 60),
         stream=stream,
+        proxies=get_proxy_port(),
     )
     response.raise_for_status()
 

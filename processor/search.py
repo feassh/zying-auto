@@ -52,7 +52,7 @@ class SearchProcessor:
         self.saved_kw_number += value
         self._worker.saved_number_signal.emit(self.saved_kw_number)
 
-    def app_login(self) -> Application:
+    def app_login(self) -> Optional[Application]:
         # 先结束已打开的所有 ZYing.exe 进程
         util.system.kill_process_by_name("ZYing.exe")
 
@@ -63,6 +63,9 @@ class SearchProcessor:
         while True:
             if win32gui.FindWindow("WindowsForms10.Window.20008.app.0.34f5582_r3_ad1", None) != 0:
                 break
+            if self._worker.is_stopping():
+                self.log_debug("收到停止信号，正在终止任务...", "orange")
+                return None
 
         # 连接到窗口
         login_window = app.window(title="系统登录")
@@ -138,6 +141,9 @@ class SearchProcessor:
                 headers={
                     "Content-Type": "text/html;charset=UTF-8",
                     "User-Agent": config.user_agent,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                    "Accept-Encoding": "gzip, deflate, br, zstd",
                 },
                 stream=True
             )
@@ -631,7 +637,8 @@ class SearchProcessor:
         # 根据配置决定是启动新应用还是连接现有应用
         config_current_page = config.get_config()['currentPage']
         if config_current_page <= 0:
-            self.app_login()
+            if self.app_login() is None:
+                return [], (0, 0), None
 
         main_window = self.navigate_to_target_page(config_current_page <= 0)
 
@@ -665,6 +672,9 @@ class SearchProcessor:
                 data = self.get_data_by_amz123()
 
             _, (total_item, total_page), main_window = data
+            if main_window is None:
+                self.log("\n收到停止信号！程序已终止运行。", "green")
+                return
 
             if total_item <= 0:
                 self.log(f"\n搜索词分页数据获取失败！程序已终止运行。", "red")
