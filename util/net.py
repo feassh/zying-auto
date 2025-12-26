@@ -148,11 +148,12 @@ def save_kw_to_server(kws) -> Optional[Exception]:
     data_product = []
     task_id = int(config.get_config()["lastTaskId"])
 
-    for kw, kw_img, filter_criteria, products in kws:
+    for kw, kw_img, filter_criteria, kw_products_count, products in kws:
         data.append({
             "kw": kw,
             "img": kw_img,
             "filter_criteria": filter_criteria,
+            "kw_products_count": kw_products_count,
             "task_id": task_id
         })
 

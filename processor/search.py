@@ -327,7 +327,13 @@ class SearchProcessor:
                 month, day = int(match.group(1)), int(match.group(2))
 
                 try:
+                    # 1. 先假设是今年
                     target_date = date(today.year, month, day)
+
+                    # 2. 【新增】如果今年的这个日期已经过了，那就加一年（算作明年的日期）
+                    if target_date < today:
+                        target_date = target_date.replace(year=today.year + 1)
+
                     offset = (target_date - today).days
                     if config.get_config()['minDateInterval'] <= offset <= config.get_config()['maxDateInterval']:
                         valuable_els.append(el)
@@ -446,8 +452,8 @@ class SearchProcessor:
 
             filter_criteria = f"{config.get_config()['minDateInterval']}-{config.get_config()['maxDateInterval']}-{config.get_config()['matchCount']}"
 
-            self.log_debug(f"符合条件搜索词：{kw.strip()}\n图片：{kw_img}", color="green")
-            return kw.strip(), kw_img, filter_criteria, [] # saved_products
+            self.log_debug(f"符合条件搜索词：{kw.strip()}\n共 {len(valuable_els)} 个商品符合。\n图片：{kw_img}", color="green")
+            return kw.strip(), kw_img, filter_criteria, len(valuable_els), [] # saved_products
         except requests.exceptions.RequestException as e:
             # 重试机制会处理此问题，但如果所有重试都失败，最好记录下来。
             self.log_debug(f"关键词 '{kw}' 请求失败: {e}", "red")
