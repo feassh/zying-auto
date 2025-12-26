@@ -71,7 +71,7 @@ class SearchProcessor:
         login_window = app.window(title="系统登录")
 
         # 等待窗口出现（重要！）
-        login_window.wait("visible", timeout=300)
+        login_window.wait("visible", timeout=10)
 
         self.log("正在登录...", "orange")
         input_username = login_window.child_window(auto_id="txtAcc")
@@ -86,7 +86,7 @@ class SearchProcessor:
 
         return app
 
-    def navigate_to_target_page(self, auto_click=True) -> WindowSpecification:
+    def navigate_to_target_page(self, auto_click=True) -> Optional[WindowSpecification]:
         self.log("正在导航至目标页面...", "orange")
 
         app = Application(backend="win32").connect(title="分销系统", timeout=300)
@@ -113,6 +113,9 @@ class SearchProcessor:
         ]
 
         for desc, x, y in steps:
+            if self._worker.is_stopping():
+                self.log_debug("收到停止信号，正在终止任务...", "orange")
+                return None
             self.log(desc)
             util.system.safe_click(x, y)
             util.app.check_load_finished()
@@ -332,6 +335,7 @@ class SearchProcessor:
                     continue  # 忽略无效日期，如2月30日
 
             if len(valuable_els) < config.get_config()['matchCount']:
+                self.log_debug(f'关键词：{kw} 匹配到 {len(valuable_els)} 个，不符合要求，忽略。', 'orange')
                 return None
 
             kw_img = None
@@ -416,34 +420,34 @@ class SearchProcessor:
                 if img_result is not None and img_result.strip().startswith('http'):
                     kw_img = img_result
 
-            concurrency = config.get_config()['concurrency']
-            self.log_debug(f"获取到 {len(products)} 个符合筛选条件的商品，正在使用 {concurrency} 个并发线程进行处理...")
-
-            saved_products = []
-
-            with ThreadPoolExecutor(max_workers=concurrency) as executor:
-                future_to_product = {executor.submit(self.process_product_detail, product, kw, cookies): product for
-                                     product in products}
-                for future in as_completed(future_to_product):
-                    if self._worker.is_stopping():
-                        self.log_debug("收到停止信号，正在终止任务...", "orange")
-                        executor.shutdown(wait=True, cancel_futures=True)
-                        break
-
-                    result = future.result()
-                    if result:
-                        saved_products.append(result)
-
-                        (cate_main, cate_sub, _), _ = result
-                        self.log_debug(f"搜索词 {kw} 对应的的商品主分类：{cate_main}，次分类：{cate_sub}", "cyan")
-
-            self.log_debug(f"搜索词 {kw.strip()} 获取到了 {len(saved_products)} 个商品和对应的商品数据",
-                           "green" if len(saved_products) > 0 else "orange")
+            # concurrency = config.get_config()['concurrency']
+            # self.log_debug(f"获取到 {len(products)} 个符合筛选条件的商品，正在使用 {concurrency} 个并发线程进行处理...")
+            #
+            # saved_products = []
+            #
+            # with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            #     future_to_product = {executor.submit(self.process_product_detail, product, kw, cookies): product for
+            #                          product in products}
+            #     for future in as_completed(future_to_product):
+            #         if self._worker.is_stopping():
+            #             self.log_debug("收到停止信号，正在终止任务...", "orange")
+            #             executor.shutdown(wait=True, cancel_futures=True)
+            #             break
+            #
+            #         result = future.result()
+            #         if result:
+            #             saved_products.append(result)
+            #
+            #             (cate_main, cate_sub, _), _ = result
+            #             # self.log_debug(f"搜索词 {kw} 对应的的商品主分类：{cate_main}，次分类：{cate_sub}", "cyan")
+            #
+            # self.log_debug(f"搜索词 {kw.strip()} 获取到了 {len(saved_products)} 个商品和对应的商品数据",
+            #                "green" if len(saved_products) > 0 else "orange")
 
             filter_criteria = f"{config.get_config()['minDateInterval']}-{config.get_config()['maxDateInterval']}-{config.get_config()['matchCount']}"
 
             self.log_debug(f"符合条件搜索词：{kw.strip()}\n图片：{kw_img}", color="green")
-            return kw.strip(), kw_img, filter_criteria, saved_products
+            return kw.strip(), kw_img, filter_criteria, [] # saved_products
         except requests.exceptions.RequestException as e:
             # 重试机制会处理此问题，但如果所有重试都失败，最好记录下来。
             self.log_debug(f"关键词 '{kw}' 请求失败: {e}", "red")
@@ -641,6 +645,8 @@ class SearchProcessor:
                 return [], (0, 0), None
 
         main_window = self.navigate_to_target_page(config_current_page <= 0)
+        if main_window is None:
+            return [], (0, 0), None
 
         return [], self.get_total_kw_page_and_item(main_window), main_window
 
