@@ -62,6 +62,7 @@ class MyApp(QMainWindow):
         self.ui.sbTimeout.setValue(config_data.get("timeout", 60))
         self.ui.leExcelPath.setText(config_data.get("excelPath", ""))
         self.ui.cbDebug.setChecked(config_data.get("debug", False))
+
         data_source = config_data.get("dataSource", None)
         if data_source is None:
             self.ui.rbZying.setChecked(True)
@@ -69,13 +70,35 @@ class MyApp(QMainWindow):
         else:
             self.ui.rbZying.setChecked(data_source == 0)
             self.ui.rbAmz123.setChecked(data_source != 0)
+
         last_task_id = config_data.get("lastTaskId", None)
         if last_task_id is None:
             self.ui.labelTaskID.setText("无")
         else:
             self.ui.labelTaskID.setText(last_task_id)
+
         self.ui.cbAutoDeleteAllData.setChecked(config_data.get("autoDeleteAllData", False))
 
+        amz123Week = config_data.get("amz123Week", None)
+        if amz123Week is None:
+            self.ui.rbAmz123Week50000.setChecked(True)
+        else:
+            self.ui.rbAmz123WeekAll.setChecked(amz123Week == [])
+            self.ui.rbAmz123Week1.setChecked(amz123Week == [1, 1000])
+            self.ui.rbAmz123Week1001.setChecked(amz123Week == [1001, 10000])
+            self.ui.rbAmz123Week10001.setChecked(amz123Week == [10001, 50000])
+            self.ui.rbAmz123Week50000.setChecked(amz123Week == [50001])
+        amz123Fluctuation = config_data.get("amz123Fluctuation", None)
+        if amz123Fluctuation is None:
+            self.ui.rbAmz123Fluctuation1000.setChecked(True)
+        else:
+            self.ui.rbAmz123FluctuationAll.setChecked(amz123Fluctuation == [])
+            self.ui.rbAmz123Fluctuation1.setChecked(amz123Fluctuation == [1, 50])
+            self.ui.rbAmz123Fluctuation51.setChecked(amz123Fluctuation == [51, 100])
+            self.ui.rbAmz123Fluctuation101.setChecked(amz123Fluctuation == [101, 1000])
+            self.ui.rbAmz123Fluctuation1000.setChecked(amz123Fluctuation == [1001])
+
+        # 绑定事件
         self.ui.pbExePath.clicked.connect(self.pb_exe_path)
         self.ui.pbStart.clicked.connect(self.pb_start)
         self.ui.pbExcelPath.clicked.connect(self.pb_excel_path)
@@ -121,6 +144,28 @@ class MyApp(QMainWindow):
         auto_delete_all_data = self.ui.cbAutoDeleteAllData.isChecked()
         max_save_number = int(self.ui.sbMaxSaveNumber.value()) # 该字段只存储，不读取
 
+        if self.ui.rbAmz123WeekAll.isChecked():
+            amz123Week = []
+        elif self.ui.rbAmz123Week1.isChecked():
+            amz123Week = [1, 1000]
+        elif self.ui.rbAmz123Week1001.isChecked():
+            amz123Week = [1001, 10000]
+        elif self.ui.rbAmz123Week10001.isChecked():
+            amz123Week = [10001, 50000]
+        else:
+            amz123Week = [50001]
+
+        if self.ui.rbAmz123FluctuationAll.isChecked():
+            amz123Fluctuation = []
+        elif self.ui.rbAmz123Fluctuation1.isChecked():
+            amz123Fluctuation = [1, 50]
+        elif self.ui.rbAmz123Fluctuation51.isChecked():
+            amz123Fluctuation = [51, 100]
+        elif self.ui.rbAmz123Fluctuation101.isChecked():
+            amz123Fluctuation = [101, 1000]
+        else:
+            amz123Fluctuation = [1001]
+
         if not exe_path or not user or not pwd:
             QMessageBox.warning(self, "提示", "请先配置 智赢软件 的相关信息！")
             return
@@ -143,7 +188,9 @@ class MyApp(QMainWindow):
             "dataSource": data_source,
             "lastTaskId": last_task_id,
             "autoDeleteAllData": auto_delete_all_data,
-            "maxSaveNumber": max_save_number
+            "maxSaveNumber": max_save_number,
+            "amz123Week": amz123Week,
+            "amz123Fluctuation": amz123Fluctuation
         }
 
         e = config.save_config(config_data)

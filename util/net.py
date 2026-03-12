@@ -210,8 +210,10 @@ def get_amz123_kw_list(page) -> tuple[Optional[tuple[list, int]], Optional[Excep
             json_data={
                 "word": "",
                 "country": "jp",
-                "ranking_this_week": [50001],
-                "fluctuation_range": [1001],
+                # []，[1, 1000]，[1001, 10000]，[10001, 50000]，[50001]
+                "ranking_this_week": config.get_config()["amz123Week"],
+                # []，[1, 50]，[51, 100]，[101, 1000]，[1001]
+                "fluctuation_range": config.get_config()["amz123Fluctuation"],
                 "word_len_range": [],
                 "click_range": [],
                 "conversion_range": [],

@@ -733,6 +733,167 @@ color: rgb(255, 255, 255);</string>
       </widget>
      </widget>
     </widget>
+    <widget class="QWidget" name="tab_3">
+     <attribute name="title">
+      <string>AMZ123</string>
+     </attribute>
+     <widget class="QGroupBox" name="groupBox_8">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>10</y>
+        <width>681</width>
+        <height>51</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>AMZ123 本周排名</string>
+      </property>
+      <widget class="QRadioButton" name="rbAmz123WeekAll">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>20</y>
+         <width>51</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>全部</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123Week1">
+       <property name="geometry">
+        <rect>
+         <x>80</x>
+         <y>20</y>
+         <width>71</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>1-1000</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123Week1001">
+       <property name="geometry">
+        <rect>
+         <x>160</x>
+         <y>20</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>1001-10000</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123Week10001">
+       <property name="geometry">
+        <rect>
+         <x>270</x>
+         <y>20</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>10001-50000</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123Week50000">
+       <property name="geometry">
+        <rect>
+         <x>380</x>
+         <y>20</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>50000以上</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QGroupBox" name="groupBox_9">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>80</y>
+        <width>681</width>
+        <height>51</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>AMZ123 涨跌幅度</string>
+      </property>
+      <widget class="QRadioButton" name="rbAmz123FluctuationAll">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>20</y>
+         <width>51</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>全部</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123Fluctuation1">
+       <property name="geometry">
+        <rect>
+         <x>80</x>
+         <y>20</y>
+         <width>71</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>1-50</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123Fluctuation51">
+       <property name="geometry">
+        <rect>
+         <x>160</x>
+         <y>20</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>51-100</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123Fluctuation101">
+       <property name="geometry">
+        <rect>
+         <x>270</x>
+         <y>20</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>101-1000</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="rbAmz123Fluctuation1000">
+       <property name="geometry">
+        <rect>
+         <x>380</x>
+         <y>20</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>1000以上</string>
+       </property>
+      </widget>
+     </widget>
+    </widget>
    </widget>
    <widget class="QPushButton" name="pbStart">
     <property name="geometry">

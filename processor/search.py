@@ -684,7 +684,7 @@ class SearchProcessor:
                 data = self.get_data_by_amz123()
 
             _, (total_item, total_page), main_window = data
-            if main_window is None:
+            if main_window is None and config.is_zying_data_source():
                 self.log("\n收到停止信号！程序已终止运行。", "green")
                 return
 
