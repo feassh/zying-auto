@@ -207,6 +207,9 @@ def get_amz123_kw_list(page) -> tuple[Optional[tuple[list, int]], Optional[Excep
     try:
         res = post(
             "https://api.amz123.com/search/v1/hotwords/search",
+            headers={
+                'Authorization': config.get_config().get('login', {}).get("token", ''),
+            },
             json_data={
                 "word": "",
                 "country": "jp",

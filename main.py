@@ -6,6 +6,8 @@ import time
 
 import pyperclip
 
+from qr_login import QRLoginWindow
+
 ole32 = ctypes.OleDLL('ole32')
 COINIT_APARTMENTTHREADED = 0x2
 hr = ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)
@@ -47,6 +49,7 @@ class MyApp(QMainWindow):
         self.window().setFixedSize(self.window().size().width(), self.window().size().height())
 
         self.process_window = None
+        self.qr_window = None
 
         config_data = config.get_config(throw_exception=False)
         self.ui.leExePath.setText(config_data.get("exePath", ""))
@@ -98,12 +101,25 @@ class MyApp(QMainWindow):
             self.ui.rbAmz123Fluctuation101.setChecked(amz123Fluctuation == [101, 1000])
             self.ui.rbAmz123Fluctuation1000.setChecked(amz123Fluctuation == [1001])
 
+        try:
+            data = config_data.get("login", None)
+            if data is not None:
+                parsed = util.app.parse_token_expire(data)
+                if parsed.get("expired", True):
+                    pass
+                else:
+                    exp_time = parsed.get("expire_time", "")
+                    self.ui.pbQRLogin.setText("用户名：" + data.get("username", "") + "，登录过期时间：" + exp_time)
+        except Exception as e:
+            pass
+
         # 绑定事件
         self.ui.pbExePath.clicked.connect(self.pb_exe_path)
         self.ui.pbStart.clicked.connect(self.pb_start)
         self.ui.pbExcelPath.clicked.connect(self.pb_excel_path)
         self.ui.pbOpenWebsite.clicked.connect(self.pb_open_website)
         self.ui.pbCopyTaskID.clicked.connect(self.pb_copy_task_id)
+        self.ui.pbQRLogin.clicked.connect(self.open_qr_login)
 
         if not util.system.is_admin():
             QMessageBox.critical(self, "提示", "请使用管理员方式运行本软件")
@@ -190,7 +206,8 @@ class MyApp(QMainWindow):
             "autoDeleteAllData": auto_delete_all_data,
             "maxSaveNumber": max_save_number,
             "amz123Week": amz123Week,
-            "amz123Fluctuation": amz123Fluctuation
+            "amz123Fluctuation": amz123Fluctuation,
+            "login": config.get_config().get("login"),
         }
 
         e = config.save_config(config_data)
@@ -199,6 +216,23 @@ class MyApp(QMainWindow):
             return
 
         self.ui.labelTaskID.setText(last_task_id)
+
+        if data_source == 1:
+            try:
+                data = config_data.get("login", None)
+                if data is not None:
+                    parsed = util.app.parse_token_expire(data)
+                    if parsed.get("expired", True):
+                        QMessageBox.critical(self, "提示", f"请先登录 AMZ123 平台！")
+                        return
+                    else:
+                        pass
+                else:
+                    QMessageBox.critical(self, "提示", f"请先登录 AMZ123 平台！")
+                    return
+            except Exception as e:
+                QMessageBox.critical(self, "提示", f"请先登录 AMZ123 平台！")
+                return
 
         msg_box = QMessageBox()
         msg_box.setWindowTitle("提示")
@@ -256,6 +290,40 @@ class MyApp(QMainWindow):
         if result == QMessageBox.Ok:
             subprocess.Popen([os.path.join(util.system.get_exe_dir(), "update.exe"), "run"])
             QTimer.singleShot(0, QApplication.quit)
+
+    def open_qr_login(self):
+        login = config.get_config().get("login", None)
+        if login:
+            try:
+                expired = util.app.parse_token_expire(login).get("expired", True)
+                if not expired:
+                    return
+            except Exception as e:
+                pass
+
+        self.qr_window = QRLoginWindow()
+        self.qr_window.login_success.connect(self.login_ok)
+        self.qr_window.show()
+
+    def login_ok(self, data):
+        config_data = config.get_config(throw_exception=True)
+        config_data["login"] = data
+
+        e = config.save_config(config_data)
+        if isinstance(e, Exception):
+            QMessageBox.critical(self, "提示", f"登录信息保存失败，请检查软件配置文件是否存在！\n{e}")
+            return
+
+        try:
+            parsed = util.app.parse_token_expire(data)
+            if parsed.get("expired", True):
+                exp_time = "已过期，请重新登录"
+            else:
+                exp_time = parsed.get("expire_time", "")
+            self.ui.pbQRLogin.setText("用户名：" + data.get("username", "") + "，登录过期时间：" + exp_time)
+        except Exception as e:
+            self.ui.pbQRLogin.setText("用户名：" + data.get("username", "") + "，登录过期时间：未知")
+            pass
 
 
 if __name__ == '__main__':

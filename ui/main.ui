@@ -893,6 +893,32 @@ color: rgb(255, 255, 255);</string>
        </property>
       </widget>
      </widget>
+     <widget class="QGroupBox" name="groupBox_10">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>150</y>
+        <width>681</width>
+        <height>111</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>AMZ123 登录信息</string>
+      </property>
+      <widget class="QPushButton" name="pbQRLogin">
+       <property name="geometry">
+        <rect>
+         <x>60</x>
+         <y>40</y>
+         <width>561</width>
+         <height>41</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>点击使用微信扫码登陆</string>
+       </property>
+      </widget>
+     </widget>
     </widget>
    </widget>
    <widget class="QPushButton" name="pbStart">
